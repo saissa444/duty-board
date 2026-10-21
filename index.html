@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>女生2隊在班表</title>
+<meta name="theme-color" content="#1F4D3F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="在班表">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<style>
+/* Layout: duty-board — sticky control strip, then one 24-hour lane strip per day, like the 勤務分配表 hour grid turned sideways */
+:root{
+  --bg:#F3F4F1; --panel:#FFFFFF; --ink:#1B2420; --muted:#5F6B66; --line:#D9DED9; --grid:#ECEFEB;
+  --accent:#1F4D3F; --accent-ink:#FFFFFF; --mine:rgba(31,77,63,.10); --now:#C8331F;
+  --pA:#C2410C; --pB:#7C3AED; --p1:#0E7490; --p2:#DB2777; --p3:#A16207; --p4:#2563EB; --pX:#6B7280;
+  --display:system-ui,-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif; --body:system-ui,-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111614; --panel:#1A201E; --ink:#E6ECE8; --muted:#97A39D; --line:#2C3531; --grid:#222A27;
+  --accent:#8FD1B5; --accent-ink:#0E1513; --mine:rgba(143,209,181,.12); --now:#FF7A62;
+  --pA:#D9541A; --pB:#8B5CF6; --p1:#0891B2; --p2:#DB2777; --p3:#A16207; --p4:#3B6FE0; --pX:#6B7280; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111614; --panel:#1A201E; --ink:#E6ECE8; --muted:#97A39D; --line:#2C3531; --grid:#222A27;
+  --accent:#8FD1B5; --accent-ink:#0E1513; --mine:rgba(143,209,181,.12); --now:#FF7A62;
+  --pA:#D9541A; --pB:#8B5CF6; --p1:#0891B2; --p2:#DB2777; --p3:#A16207; --p4:#3B6FE0; --pX:#6B7280; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:980px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px;display:flex;flex-direction:column;gap:16px}
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font-family:var(--display);font-weight:900;font-size:1.6rem;letter-spacing:.04em;margin:0;text-wrap:balance}
+.sub{color:var(--muted);font-size:.85rem;margin:2px 0 0}
+.btn{font:inherit;font-size:.9rem;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:8px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.btn:focus-visible,.chip:focus-visible,.day:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn[disabled]{opacity:.4;cursor:default}
+.controls{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:8px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.label{font-size:.75rem;letter-spacing:.12em;color:var(--muted);font-weight:700;min-width:2.6em}
+.chip{font:inherit;font-size:.85rem;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:4px 12px 4px 8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip .dot{width:12px;height:12px;border-radius:3px;background:var(--c)}
+.chip[aria-pressed="true"]{border-color:var(--c,var(--accent));box-shadow:inset 0 0 0 1px var(--c,var(--accent));font-weight:700}
+.chip.off{opacity:.45}
+.weeknav{display:flex;align-items:center;gap:8px}
+.weeknav .wk{font-family:var(--mono);font-weight:500;font-variant-numeric:tabular-nums;min-width:11em;text-align:center}
+.today{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.today h2{margin:0;font-size:1rem;font-weight:700}
+.today .who{display:flex;flex-wrap:wrap;gap:6px 14px}
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:.9rem}
+.tag i{width:10px;height:10px;border-radius:2px;background:var(--c);display:inline-block}
+.tag .t{font-family:var(--mono);font-size:.82rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.days{display:flex;flex-direction:column;gap:10px}
+.day{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px 12px;cursor:pointer;display:flex;flex-direction:column;gap:8px}
+.day.is-today{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.dhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.dhead .date{font-family:var(--mono);font-weight:500;font-size:1.05rem;font-variant-numeric:tabular-nums}
+.dhead .wd{font-weight:700}
+.dhead .cnt{color:var(--muted);font-size:.82rem;margin-left:auto}
+.badge{font-size:.72rem;font-weight:700;letter-spacing:.08em;color:var(--accent-ink);background:var(--accent);border-radius:4px;padding:1px 6px}
+.tl{position:relative;display:grid;grid-template-columns:4.6em 1fr;row-gap:4px;column-gap:8px}
+.tl .nm{font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:20px}
+.tl .nm.me{color:var(--ink);font-weight:700}
+.lane{position:relative;height:20px;background:repeating-linear-gradient(to right,var(--grid) 0 1px,transparent 1px calc(100%/24));border-radius:2px}
+.bar{position:absolute;top:0;bottom:0;background:var(--c);border-radius:4px;overflow:hidden;display:flex;align-items:center;padding:0 6px;min-width:0}
+.bar span{color:#fff;font-size:.72rem;font-weight:700;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:clip;line-height:1;text-shadow:0 1px 1px rgba(0,0,0,.25)}
+.bar.dim{opacity:.28}
+.axis{grid-column:2;position:relative;height:14px;font-family:var(--mono);font-size:.68rem;color:var(--muted)}
+.axis span{position:absolute;transform:translateX(-50%)}
+.axis span:first-child{transform:none}.axis span:last-child{transform:translateX(-100%)}
+.overlay{position:absolute;top:0;bottom:16px;left:calc(4.6em + 8px);right:0;pointer-events:none}
+.mineband{position:absolute;top:-3px;bottom:-3px;background:var(--mine);border-left:1px dashed var(--accent);border-right:1px dashed var(--accent)}
+.nowline{position:absolute;top:-4px;bottom:-2px;width:2px;background:var(--now);border-radius:1px}
+.with{font-size:.85rem;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
+.watch{font-size:.85rem;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;padding:6px 10px;border-radius:8px;background:color-mix(in srgb,var(--c) 10%,transparent);border:1px solid color-mix(in srgb,var(--c) 35%,transparent)}
+.watch .wl{display:inline-flex;align-items:center;gap:6px;font-weight:700}
+.watch .wl i{width:10px;height:10px;border-radius:2px;background:var(--c)}
+.sel{font:inherit;font-size:.85rem;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:4px 8px}
+.detail{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:8px}
+.shift{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:baseline}
+.shift .n{font-weight:700;display:flex;align-items:center;gap:6px}
+.shift .n i{width:10px;height:10px;border-radius:2px;background:var(--c)}
+.shift .tm{font-family:var(--mono);font-size:.85rem;font-variant-numeric:tabular-nums}
+.shift .segs{grid-column:1/-1;font-size:.8rem;color:var(--muted);padding-left:16px}
+.empty{background:var(--panel);border:1px dashed var(--line);border-radius:12px;padding:28px 20px;text-align:center;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:.9rem;max-width:calc(100% - 32px);z-index:20}
+.foot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;font-size:.8rem;color:var(--muted)}
+.confirm{display:inline-flex;gap:6px;align-items:center}
+@media (max-width:520px){h1{font-size:1.3rem}.tl{grid-template-columns:3.6em 1fr}.overlay{left:calc(3.6em + 8px)}}
+@media (prefers-reduced-motion:no-preference){.bar{transition:opacity .15s}}
+</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>女生2隊在班表</h1>
+      <p class="sub">依勤務分配表整理・點一天看各班勤務細項</p>
+    </div>
+    <div class="row">
+      <input type="file" id="pdfInput" accept="application/pdf,.pdf" multiple hidden>
+      <button class="btn primary" id="uploadBtn" type="button">＋ 上傳勤務分配表 PDF</button>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="row"><span class="label">我是</span><div class="row" id="meChips"></div></div>
+    <div class="row"><span class="label">提醒</span>
+      <select id="watchWho" class="sel" aria-label="提醒對象"></select>
+      <select id="watchHour" class="sel" aria-label="幾點以後"><option value="12">12:00 後</option><option value="13">13:00 後</option><option value="14">14:00 後</option><option value="15">15:00 後</option><option value="16">16:00 後</option><option value="17">17:00 後</option><option value="18">18:00 後</option><option value="19">19:00 後</option><option value="20">20:00 後</option><option value="21">21:00 後</option><option value="22">22:00 後</option><option value="23">23:00 後</option></select>
+      <span class="muted" style="font-size:.8rem">誰也在班</span>
+    </div>
+    <div class="row" style="justify-content:space-between">
+      <div class="weeknav">
+        <button class="btn" id="prevWk" type="button" aria-label="上一週">‹</button>
+        <span class="wk" id="wkLabel">—</span>
+        <button class="btn" id="nextWk" type="button" aria-label="下一週">›</button>
+        <button class="btn" id="thisWk" type="button">本週</button>
+      </div>
+      <span class="muted" id="status" style="font-size:.8rem">離線可用・班表存在這台裝置</span>
+    </div>
+  </div>
+
+  <section class="today" id="todayCard" hidden></section>
+  <section class="days" id="days"></section>
+  <div class="foot" id="foot"></div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script>
+// Parses a 勤務分配表 PDF (as text items) into shifts. Pure function, no DOM.
+function parseDutyPages(pages) {
+  const COLS = [[140,185,'值星'],[185,230,'帶勤'],[230,320,'業務整理'],[320,410,'指定處所待命'],
+                [410,458,'基本教練(公差)'],[458,505,'機動待命'],[505,552,'常訓']];
+  const pad = n => String(n).padStart(2,'0');
+  const key = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`;
+  const hours = {}; const names = {}; const days = [];
+  for (const items of pages) {
+    const all = items.map(i => i.str).join('');
+    if (!all.includes('勤務分配表')) continue;
+    const m = all.match(/(\d{3})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+    if (!m) continue;
+    const base = new Date(+m[1]+1911, +m[2]-1, +m[3], 8);
+    days.push(`${base.getFullYear()}-${pad(base.getMonth()+1)}-${pad(base.getDate())}`);
+    const its = items.filter(i => i.str.trim()).map(i => ({s:i.str.trim(), x:i.x, xc:i.x+i.w/2, yc:i.y+i.h/2}));
+    for (const c of its) {
+      if (c.x > 560 && c.x < 590 && /^[A-Z0-9]$/.test(c.s)) {
+        const near = its.filter(v => Math.abs(v.yc-c.yc) < 5 && v.x > 595).sort((a,b)=>a.x-b.x);
+        const nm = near.filter(v => v.x >= 690).map(v=>v.s).join('');
+        const role = near.filter(v => v.x < 690).map(v=>v.s).join('');
+        if (nm) names[c.s] = {name:nm, role};
+      }
+    }
+    const rows = its.filter(i => /^\d\d-\d\d$/.test(i.s) && i.x < 130).sort((a,b)=>b.yc-a.yc);
+    if (rows.length !== 25) throw new Error(`${days.at(-1)} 找到 ${rows.length} 個時段列（預期 25）`);
+    rows.forEach((r, idx) => {
+      const start = new Date(base.getTime() + idx*3600e3);
+      for (const w of its) {
+        if (Math.abs(w.yc - r.yc) < 8 && w.x > 130 && w.x < 552) {
+          const col = COLS.find(([a,b]) => w.xc >= a && w.xc < b);
+          if (!col) continue;
+          for (const code of w.s.split(/[.．、,]/).map(s=>s.trim()).filter(Boolean)) {
+            const h = ((hours[code] ||= {})[start.getTime()] ||= []);
+            if (!h.includes(col[2])) h.push(col[2]);
+          }
+        }
+      }
+    });
+  }
+  const shifts = [];
+  for (const [code, hs] of Object.entries(hours)) {
+    const ts = Object.keys(hs).map(Number).sort((a,b)=>a-b);
+    let block = [];
+    const flush = () => {
+      if (!block.length) return;
+      const segs = [];
+      for (const t of block) {
+        const d = hs[t].join('、'); const last = segs.at(-1);
+        if (last && last.duty === d && last.e === t) last.e = t+3600e3; else segs.push({s:t, e:t+3600e3, duty:d});
+      }
+      shifts.push({code, name: names[code]?.name || code, role: names[code]?.role || '',
+        start: key(new Date(block[0])), end: key(new Date(block.at(-1)+3600e3)),
+        segs: segs.map(g => ({s:key(new Date(g.s)), e:key(new Date(g.e)), d:g.duty}))});
+      block = [];
+    };
+    for (const t of ts) { if (block.length && t !== block.at(-1)+3600e3) flush(); block.push(t); }
+    flush();
+  }
+  shifts.sort((a,b) => a.start.localeCompare(b.start) || a.code.localeCompare(b.code));
+  days.sort();
+  const people = Object.entries(names).map(([code,v]) => ({code, ...v}));
+  return {firstDay: days[0], lastDay: days.at(-1), people, shifts};
+}
+const PALETTE = {A:'var(--pA)',B:'var(--pB)','1':'var(--p1)','2':'var(--p2)','3':'var(--p3)','4':'var(--p4)'};
+const ORDER = ['A','B','1','2','3','4'];
+const WD = ['日','一','二','三','四','五','六'];
+const H = 3600e3, DAY = 24*H;
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2,'0');
+const parseT = s => { const [d,t] = s.split('T'); const [y,m,dd] = d.split('-').map(Number); return new Date(y,m-1,dd,+t.slice(0,2),+t.slice(3,5)).getTime(); };
+const dayKey = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+const md = t => { const d = new Date(t); return `${d.getMonth()+1}/${d.getDate()}`; };
+const hm = t => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const color = code => PALETTE[code] || 'var(--pX)';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let weeks = {};        // id -> week doc
+let local = {};        // parsed this session but not saved
+let me = null; try { me = localStorage.getItem('duty-me'); } catch {}
+let viewWeek = null;
+const open = new Set();
+
+function allWeeks(){ return {...weeks, ...local}; }
+function people(){
+  const map = {};
+  for (const w of Object.values(allWeeks())) for (const p of (w.people||[])) map[p.code] = p;
+  return ORDER.filter(c => map[c]).map(c => map[c]).concat(Object.values(map).filter(p => !ORDER.includes(p.code)));
+}
+function shifts(){
+  const seen = new Map();
+  for (const w of Object.values(allWeeks())) for (const s of (w.shifts||[])) {
+    const k = s.code+s.start+s.end; if (!seen.has(k)) seen.set(k, {...s, s:parseT(s.start), e:parseT(s.end)});
+  }
+  return [...seen.values()].sort((a,b)=>a.s-b.s);
+}
+function weekIds(){ return Object.keys(allWeeks()).sort(); }
+function weekFor(t){
+  const k = dayKey(t);
+  return weekIds().find(id => { const w = allWeeks()[id]; return k >= w.firstDay && k <= w.lastDay; });
+}
+function clip(list, a, b){ return list.map(s => [Math.max(s.s,a), Math.min(s.e,b), s]).filter(([x,y]) => y > x); }
+function merge(iv){ iv.sort((a,b)=>a[0]-b[0]); const out=[]; for (const [a,b] of iv){ const l=out.at(-1); if (l && a<=l[1]) l[1]=Math.max(l[1],b); else out.push([a,b]); } return out; }
+function overlaps(mine, others){ const r=[]; for (const [a,b] of mine) for (const [c,d] of others){ const x=Math.max(a,c), y=Math.min(b,d); if (y>x) r.push([x,y]); } return merge(r); }
+const span = ([a,b], ref) => `${hm(a)}–${b - ref >= DAY ? (b - ref === DAY ? '24:00' : '隔日'+hm(b)) : hm(b)}`;
+
+// 提醒：指定的人在某時刻之後，誰也在班（在 App 裡設定）
+const WATCH = {name:'', fromHour:18};
+try { const w = JSON.parse(localStorage.getItem('duty-watch')); if (w) Object.assign(WATCH, w); } catch {}
+function renderWatchCtl(){
+  const sel = $('watchWho'), hr = $('watchHour'); if (!sel) return;
+  const names = people().map(p => p.name);
+  sel.innerHTML = '<option value="">不提醒</option>' + names.map(n => `<option value="${esc(n)}"${n===WATCH.name?' selected':''}>${esc(n)}</option>`).join('')
+    + (WATCH.name && !names.includes(WATCH.name) ? `<option value="${esc(WATCH.name)}" selected>${esc(WATCH.name)}</option>` : '');
+  hr.value = String(WATCH.fromHour);
+}
+function saveWatch(){ WATCH.name = $('watchWho').value; WATCH.fromHour = +$('watchHour').value; try { localStorage.setItem('duty-watch', JSON.stringify(WATCH)); } catch {} render(); }
+function watchNote(all, ps, a){
+  if (!WATCH.name) return '';
+  const p = ps.find(x => x.name === WATCH.name); if (!p) return '';
+  const from = a + WATCH.fromHour*H, dayEnd = a + DAY;
+  const hers = merge(all.filter(s => s.code===p.code && s.e > from && s.s < dayEnd).map(s => [Math.max(s.s, from), s.e]));
+  if (!hers.length) return '';
+  const others = ps.filter(x => x.code!==p.code).map(x => [x, overlaps(hers, all.filter(s=>s.code===x.code).map(s=>[s.s,s.e]))]).filter(([,o])=>o.length);
+  const body = others.length
+    ? others.map(([x,o]) => `<span class="tag" style="--c:${color(x.code)}"><i></i>${esc(x.name)} <span class="t">${o.map(m=>span(m,a)).join('、')}</span></span>`).join('')
+    : '<span class="muted">沒有人同時在班</span>';
+  return `<div class="watch" style="--c:${color(p.code)}"><span class="wl"><i></i>${esc(p.name)} ${pad(WATCH.fromHour)}:00 後（在班至 ${span([hers[0][0], hers.at(-1)[1]], a).split('–')[1]}）同班：</span>${body}</div>`;
+}
+
+function renderChips(){
+  const ps = people();
+  const el = $('meChips'); el.innerHTML = '';
+  const mk = (code, text, c) => {
+    const b = document.createElement('button'); b.type='button'; b.className='chip'; b.id='me-'+(code||'none');
+    if (c) b.style.setProperty('--c', c);
+    b.setAttribute('aria-pressed', String((me||null) === code));
+    b.innerHTML = (c ? '<span class="dot"></span>' : '') + esc(text);
+    b.onclick = () => { me = code; try { code ? localStorage.setItem('duty-me', code) : localStorage.removeItem('duty-me'); } catch {} render(); };
+    el.append(b);
+  };
+  for (const p of ps) mk(p.code, p.name, color(p.code));
+  mk(null, '不指定', null);
+}
+
+function renderToday(all, ps){
+  const card = $('todayCard');
+  const now = Date.now(); const d0 = new Date(); d0.setHours(0,0,0,0); const a = d0.getTime(), b = a + DAY;
+  const todays = clip(all, a, b);
+  if (!todays.length && !weekFor(now)) { card.hidden = true; return; }
+  card.hidden = false;
+  const onNow = all.filter(s => s.s <= now && now < s.e);
+  const name = c => (ps.find(p=>p.code===c)||{name:c}).name;
+  let html = `<h2>今天 ${md(a)}（${WD[d0.getDay()]}）</h2>`;
+  if (me) {
+    const mine = merge(todays.filter(x=>x[2].code===me).map(x=>[x[0],x[1]]));
+    if (!mine.length) html += `<div>${esc(name(me))}今天沒有班。</div>`;
+    else {
+      html += `<div>你在班 <b class="tm" style="font-family:var(--mono)">${mine.map(m=>span(m,a)).join('、')}</b>，同時在班：</div><div class="who">`;
+      const others = ps.filter(p=>p.code!==me).map(p => [p, overlaps(mine, todays.filter(x=>x[2].code===p.code).map(x=>[x[0],x[1]]))]).filter(([,o])=>o.length);
+      html += others.length ? others.map(([p,o]) => `<span class="tag" style="--c:${color(p.code)}"><i></i>${esc(p.name)} <span class="t">${o.map(m=>span(m,a)).join('、')}</span></span>`).join('') : '<span class="muted">沒有人和你重疊</span>';
+      html += '</div>';
+    }
+  }
+  html += `<div class="who"><span class="muted" style="font-size:.85rem">現在在班：</span>${onNow.length ? onNow.map(s=>`<span class="tag" style="--c:${color(s.code)}"><i></i>${esc(s.name)} <span class="t">至 ${s.e - a >= DAY ? '隔日' : ''}${hm(s.e)}</span></span>`).join('') : '<span class="muted" style="font-size:.85rem">無</span>'}</div>`;
+  html += watchNote(all, ps, a);
+  card.innerHTML = html;
+}
+
+function renderDays(all, ps){
+  const box = $('days'); box.innerHTML = '';
+  const ids = weekIds();
+  if (!ids.length) {
+    box.innerHTML = `<div class="empty">還沒有班表。按「＋ 上傳勤務分配表 PDF」加入一週的勤務分配表，就會在這裡顯示每天誰在班。</div>`;
+    $('wkLabel').textContent = '—'; return;
+  }
+  if (!viewWeek || !allWeeks()[viewWeek]) viewWeek = weekFor(Date.now()) || ids.at(-1);
+  const w = allWeeks()[viewWeek];
+  $('wkLabel').textContent = `${w.firstDay.slice(5).replace('-','/')} – ${w.lastDay.slice(5).replace('-','/')}`;
+  const i = ids.indexOf(viewWeek); $('prevWk').disabled = i <= 0; $('nextWk').disabled = i >= ids.length-1;
+  const todayK = dayKey(Date.now());
+  for (let t = parseT(w.firstDay+'T00:00'); dayKey(t) <= w.lastDay; t = parseT(dayKey(t+DAY+2*H)+'T00:00')) {
+    const a = t, b = a + DAY, k = dayKey(a);
+    const items = clip(all, a, b);
+    const card = document.createElement('div'); card.className = 'day' + (k===todayK ? ' is-today' : ''); card.tabIndex = 0; card.id = 'day-'+k;
+    const lanes = ps.filter(p => !me || true);
+    const onDuty = new Set(items.map(x=>x[2].code));
+    const mine = me ? merge(items.filter(x=>x[2].code===me).map(x=>[x[0],x[1]])) : [];
+    const pct = x => ((x - a) / DAY * 100).toFixed(3) + '%';
+    let html = `<div class="dhead"><span class="date">${md(a)}</span><span class="wd">星期${WD[new Date(a).getDay()]}</span>${k===todayK?'<span class="badge">今天</span>':''}<span class="cnt">${onDuty.size ? onDuty.size+' 人在班' : '全員休假'}</span></div>`;
+    html += '<div class="tl">';
+    for (const p of lanes) {
+      const bars = items.filter(x=>x[2].code===p.code);
+      const dimOthers = me && mine.length && p.code !== me;
+      html += `<div class="nm${p.code===me?' me':''}">${esc(p.name)}</div><div class="lane">` +
+        bars.map(([x,y]) => {
+          const inMine = !dimOthers || mine.some(([m1,m2]) => y > m1 && x < m2);
+          return `<div class="bar${inMine?'':' dim'}" style="--c:${color(p.code)};left:${pct(x)};width:${((y-x)/DAY*100).toFixed(3)}%" title="${esc(p.name)} ${hm(x)}–${y===b?'24:00':hm(y)}"><span>${esc(p.name)}</span></div>`;
+        }).join('') + '</div>';
+    }
+    html += '<div class="axis">' + [0,6,12,18,24].map(h=>`<span style="left:${h/24*100}%">${pad(h)}</span>`).join('') + '</div>';
+    html += '<div class="overlay">' + mine.map(([x,y]) => `<div class="mineband" style="left:${pct(x)};width:${((y-x)/DAY*100).toFixed(3)}%"></div>`).join('');
+    const now = Date.now(); if (now >= a && now < b) html += `<div class="nowline" style="left:${pct(now)}"></div>`;
+    html += '</div></div>';
+    if (me && mine.length) {
+      const others = ps.filter(p=>p.code!==me).map(p => [p, overlaps(mine, items.filter(x=>x[2].code===p.code).map(x=>[x[0],x[1]]))]).filter(([,o])=>o.length);
+      html += `<div class="with"><span class="muted">同班：</span>${others.length ? others.map(([p,o]) => `<span class="tag" style="--c:${color(p.code)}"><i></i>${esc(p.name)} <span class="t">${o.map(m=>span(m,a)).join('、')}</span></span>`).join('') : '<span class="muted">無</span>'}</div>`;
+    }
+    html += watchNote(all, ps, a);
+    if (open.has(k)) {
+      const list = all.filter(s => s.e > a && s.s < b);
+      html += '<div class="detail">' + (list.length ? list.map(s => `<div class="shift" style="--c:${color(s.code)}"><span class="n"><i></i>${esc(s.name)}<span class="muted" style="font-weight:400;font-size:.8rem">${esc(s.role||'')}</span></span><span class="tm">${md(s.s)} ${hm(s.s)} – ${dayKey(s.e)!==dayKey(s.s)?md(s.e)+' ':''}${hm(s.e)}</span><div class="segs">${(s.segs||[]).map(g=>`${hm(parseT(g.s))}–${hm(parseT(g.e))} ${esc(g.d)}`).join('　')}</div></div>`).join('') : '<span class="muted">這天沒有排班</span>') + '</div>';
+    }
+    card.innerHTML = html;
+    const toggle = () => { open.has(k) ? open.delete(k) : open.add(k); render(); };
+    card.onclick = toggle; card.onkeydown = e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); toggle(); } };
+    box.append(card);
+  }
+}
+
+function renderFoot(){
+  const f = $('foot'); const w = allWeeks()[viewWeek];
+  if (!w) { f.innerHTML = ''; return; }
+  const unsaved = local[viewWeek] && !weeks[viewWeek];
+  f.innerHTML = `<span>來源：${esc(w.source||'勤務分配表')}${unsaved?'（這個瀏覽器無法存檔，關掉後會消失）':''}</span><span class="confirm" id="delWrap"><button class="btn" id="delBtn" type="button">移除這一週</button></span>`;
+  $('delBtn').onclick = () => {
+    $('delWrap').innerHTML = `<span>確定移除 ${w.firstDay.slice(5)} 這週？</span><button class="btn" id="delYes" type="button">移除</button><button class="btn" id="delNo" type="button">取消</button>`;
+    $('delNo').onclick = renderFoot;
+    $('delYes').onclick = async () => {
+      const id = viewWeek; delete local[id];
+      const st = readJSON(STORE, {}); delete st[id]; writeJSON(STORE, st);
+      if (SEED[id]) writeJSON(HIDDEN, [...new Set([...readJSON(HIDDEN, []), id])]);
+      delete weeks[id]; viewWeek = null; render(); toast('已移除這一週');
+    };
+  };
+}
+
+function render(){
+  const ps = people(), all = shifts();
+  renderChips(); renderWatchCtl(); renderToday(all, ps); renderDays(all, ps); renderFoot();
+}
+
+let toastT; function toast(msg){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true, 3500); }
+
+$('prevWk').onclick = () => { const ids=weekIds(); viewWeek = ids[Math.max(0, ids.indexOf(viewWeek)-1)]; render(); };
+$('nextWk').onclick = () => { const ids=weekIds(); viewWeek = ids[Math.min(ids.length-1, ids.indexOf(viewWeek)+1)]; render(); };
+$('thisWk').onclick = () => { viewWeek = weekFor(Date.now()) || null; if (!viewWeek) toast('還沒有本週的班表'); render(); };
+$('watchWho').onchange = saveWatch; $('watchHour').onchange = saveWatch;
+$('uploadBtn').onclick = () => $('pdfInput').click();
+
+let pdfReady;
+function pdfLib(){
+  return pdfReady ||= (async () => {
+    const lib = await import('./pdfjs/pdf.min.mjs');
+    lib.GlobalWorkerOptions.workerSrc = new URL('./pdfjs/pdf.worker.min.mjs', location.href).href;
+    return lib;
+  })().catch(err => { pdfReady = null; console.warn(err); throw new Error('無法載入 PDF 讀取工具，請確認是從 App 網址開啟'); });
+}
+$('pdfInput').onchange = async e => {
+  const files = [...e.target.files]; e.target.value = '';
+  if (!files.length) return;
+  $('status').textContent = '讀取中…';
+  try {
+    const lib = await pdfLib();
+    for (const f of files) {
+      try {
+        const doc = await lib.getDocument({data: new Uint8Array(await f.arrayBuffer()), isEvalSupported:false}).promise;
+        const pages = [];
+        for (let i=1;i<=doc.numPages;i++){ const p = await doc.getPage(i); const tc = await p.getTextContent();
+          pages.push(tc.items.map(it => ({str:it.str, x:it.transform[4], y:it.transform[5], w:it.width, h:it.height}))); }
+        const r = parseDutyPages(pages);
+        if (!r.firstDay) throw new Error('找不到勤務分配表的日期，請確認是同一種格式的 PDF');
+        const week = {...r, source: f.name, uploadedAt: new Date().toISOString()};
+        const id = r.firstDay;
+        local[id] = week; viewWeek = id;
+        const saved = writeJSON(STORE, {...readJSON(STORE, {}), [id]: week});
+        const h = readJSON(HIDDEN, []).filter(x => x !== id); writeJSON(HIDDEN, h);
+        if (saved) { delete local[id]; weeks[id] = week; }
+        render();
+        toast(`已加入 ${r.firstDay.slice(5)} – ${r.lastDay.slice(5)}，共 ${r.shifts.length} 個班` + (saved ? '' : '（這個瀏覽器無法存檔，關掉後會消失）'));
+      } catch (err) { toast(`${f.name}：${err.message || err}`); }
+    }
+  } catch (err) { toast(err.message || String(err)); }
+  $('status').textContent = '離線可用・班表存在這台裝置';
+};
+
+// ---- 單機版：資料存在這台裝置的瀏覽器裡 ----
+const SEED = {};
+const STORE = 'duty-weeks-v1', HIDDEN = 'duty-hidden-v1';
+function readJSON(k, d){ try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
+function writeJSON(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } }
+function loadWeeks(){
+  const hidden = new Set(readJSON(HIDDEN, []));
+  const saved = readJSON(STORE, {});
+  const out = {};
+  for (const [id, w] of Object.entries({...SEED, ...saved})) if (!hidden.has(id) || saved[id]) out[id] = w;
+  weeks = out;
+}
+loadWeeks();
+render();
+if ('serviceWorker' in navigator && /^https?:/.test(location.protocol)) {
+  navigator.serviceWorker.register('sw.js').catch(err => console.warn('離線功能未啟用', err));
+}
+</script>
+</body>
+</html>
