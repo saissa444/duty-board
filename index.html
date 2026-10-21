@@ -70,6 +70,7 @@ h1{font-family:var(--display);font-weight:900;font-size:1.6rem;letter-spacing:.0
 .tl .nm.me{color:var(--ink);font-weight:700}
 .lane{position:relative;height:20px;background:repeating-linear-gradient(to right,var(--grid) 0 1px,transparent 1px calc(100%/24));border-radius:2px}
 .bar{position:absolute;top:0;bottom:0;background:var(--c);border-radius:4px;overflow:hidden;display:flex;align-items:center;padding:0 6px;min-width:0}
+.bar .star{font-weight:900;margin-right:3px;font-size:.95em}
 .bar span{color:#fff;font-size:.72rem;font-weight:700;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:clip;line-height:1;text-shadow:0 1px 1px rgba(0,0,0,.25)}
 .bar.dim{opacity:.28}
 .axis{grid-column:2;position:relative;height:14px;font-family:var(--mono);font-size:.68rem;color:var(--muted)}
@@ -330,9 +331,9 @@ function renderDays(all, ps){
       const bars = items.filter(x=>x[2].code===p.code);
       const dimOthers = me && mine.length && p.code !== me;
       html += `<div class="nm${p.code===me?' me':''}">${esc(p.name)}</div><div class="lane">` +
-        bars.map(([x,y]) => {
+        bars.map(([x,y,sh]) => {
           const inMine = !dimOthers || mine.some(([m1,m2]) => y > m1 && x < m2);
-          return `<div class="bar${inMine?'':' dim'}" style="--c:${color(p.code)};left:${pct(x)};width:${((y-x)/DAY*100).toFixed(3)}%" title="${esc(p.name)} ${hm(x)}–${y===b?'24:00':hm(y)}"><span>${esc(p.name)}</span></div>`;
+          return `<div class="bar${inMine?'':' dim'}" style="--c:${color(p.code)};left:${pct(x)};width:${((y-x)/DAY*100).toFixed(3)}%" title="${esc(p.name)}${isOfficer(sh)?'（值星官）':''} ${hm(x)}–${y===b?'24:00':hm(y)}"><span>${isOfficer(sh)?'<b class="star" aria-label="值星官">★</b>':''}${esc(p.name)}</span></div>`;
         }).join('') + '</div>';
     }
     html += '<div class="axis">' + [0,6,12,18,24].map(h=>`<span style="left:${h/24*100}%">${pad(h)}</span>`).join('') + '</div>';
@@ -346,7 +347,7 @@ function renderDays(all, ps){
     html += watchNote(all, ps, a);
     if (open.has(k)) {
       const list = all.filter(s => s.e > a && s.s < b);
-      html += '<div class="detail">' + (list.length ? list.map(s => `<div class="shift" style="--c:${color(s.code)}"><span class="n"><i></i>${esc(s.name)}<span class="muted" style="font-weight:400;font-size:.8rem">${esc(s.role||'')}</span></span><span class="tm">${md(s.s)} ${hm(s.s)} – ${dayKey(s.e)!==dayKey(s.s)?md(s.e)+' ':''}${hm(s.e)}</span><div class="segs">${(s.segs||[]).map(g=>`${hm(parseT(g.s))}–${hm(parseT(g.e))} ${esc(g.d)}`).join('　')}</div></div>`).join('') : '<span class="muted">這天沒有排班</span>') + '</div>';
+      html += '<div class="detail">' + (list.length ? list.map(s => `<div class="shift" style="--c:${color(s.code)}"><span class="n"><i></i>${isOfficer(s)?'★ ':''}${esc(s.name)}${isOfficer(s)?'<span class="muted" style="font-weight:700;font-size:.8rem">值星官</span>':''}<span class="muted" style="font-weight:400;font-size:.8rem">${esc(s.role||'')}</span></span><span class="tm">${md(s.s)} ${hm(s.s)} – ${dayKey(s.e)!==dayKey(s.s)?md(s.e)+' ':''}${hm(s.e)}</span><div class="segs">${(s.segs||[]).map(g=>`${hm(parseT(g.s))}–${hm(parseT(g.e))} ${esc(g.d)}`).join('　')}</div></div>`).join('') : '<span class="muted">這天沒有排班</span>') + '</div>';
     }
     card.innerHTML = html;
     const toggle = () => { open.has(k) ? open.delete(k) : open.add(k); render(); };
@@ -372,8 +373,38 @@ function renderFoot(){
   };
 }
 
+// 值星官：每個「全員休假日」之後第一個上班的人，就是到下一個全員休假日為止的值星官
+function dutyOfficers(all){
+  const days = new Set();
+  for (const w of Object.values(allWeeks())) {
+    for (let t = parseT(w.firstDay+'T00:00'); dayKey(t) <= w.lastDay; t = parseT(dayKey(t+DAY+2*H)+'T00:00')) days.add(dayKey(t));
+  }
+  const sorted = [...days].sort();
+  if (!sorted.length) return [];
+  const isOff = k => { const a = parseT(k+'T00:00'), b = a + DAY; return !all.some(s => s.e > a && s.s < b); };
+  // 斷點：資料開頭，以及每段連續休假日的結束
+  const anchors = [parseT(sorted[0]+'T00:00')];
+  for (let i = 0; i < sorted.length; i++) {
+    const k = sorted[i];
+    const prevDay = dayKey(parseT(k+'T00:00') - 12*H);
+    if (i > 0 && sorted[i-1] !== prevDay) anchors.push(parseT(k+'T00:00'));  // 資料中斷，視為新的一段
+    if (isOff(k)) anchors.push(parseT(k+'T00:00') + DAY);
+  }
+  const uniq = [...new Set(anchors)].sort((a,b)=>a-b);
+  const out = [];
+  uniq.forEach((from, i) => {
+    const to = uniq[i+1] ?? Infinity;
+    const first = all.find(s => s.s >= from && s.s < to);
+    if (first && !out.some(o => o.from === first.s)) out.push({code: first.code, from: first.s, to});
+  });
+  return out;
+}
+let officers = [];
+const isOfficer = s => officers.some(o => o.code === s.code && s.s >= o.from && s.s < o.to);
+
 function render(){
   const ps = people(), all = shifts();
+  officers = dutyOfficers(all);
   renderChips(); renderWatchCtl(); renderToday(all, ps); renderDays(all, ps); renderFoot();
 }
 
