@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>在班表</title>
-<meta name="theme-color" content="#1F4D3F">
+<meta name="theme-color" content="#ECE9E4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#232527" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="在班表">
@@ -15,20 +16,23 @@
 <style>
 /* Layout: duty-board — sticky control strip, then one 24-hour lane strip per day, like the 勤務分配表 hour grid turned sideways */
 :root{
-  --bg:#F3F4F1; --panel:#FFFFFF; --ink:#1B2420; --muted:#5F6B66; --line:#D9DED9; --grid:#ECEFEB;
-  --accent:#1F4D3F; --accent-ink:#FFFFFF; --mine:rgba(31,77,63,.10); --now:#C8331F;
-  --pA:#C2410C; --pB:#7C3AED; --p1:#0E7490; --p2:#DB2777; --p3:#A16207; --p4:#2563EB; --pX:#6B7280;
+  /* 莫蘭迪：灰米底、鼠尾草綠主色、灰調人員色 */
+  --bg:#ECE9E4; --panel:#F8F6F3; --ink:#45423F; --muted:#7A736B; --line:#DEDAD3; --grid:#E9E5DF;
+  --accent:#627A6C; --accent-ink:#FFFFFF; --accent-soft:#DDE4DE; --mine:rgba(98,122,108,.13); --now:#B5655A;
+  --shadow:0 1px 2px rgba(69,66,63,.05), 0 10px 24px -16px rgba(69,66,63,.35);
+  --pA:#A0705F; --pB:#80709A; --p1:#5E8188; --p2:#A2707E; --p3:#937C47; --p4:#64799A; --pX:#8B857E;
   --display:system-ui,-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif; --body:system-ui,-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --ease:cubic-bezier(.2,.7,.2,1);
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#111614; --panel:#1A201E; --ink:#E6ECE8; --muted:#97A39D; --line:#2C3531; --grid:#222A27;
-  --accent:#8FD1B5; --accent-ink:#0E1513; --mine:rgba(143,209,181,.12); --now:#FF7A62;
-  --pA:#D9541A; --pB:#8B5CF6; --p1:#0891B2; --p2:#DB2777; --p3:#A16207; --p4:#3B6FE0; --pX:#6B7280; color-scheme:dark}}
+  --bg:#232527; --panel:#2C2F31; --ink:#E6E1DA; --muted:#A29B93; --line:#3B3F42; --grid:#313437;
+  --accent:#9FB3A6; --accent-ink:#1E2321; --accent-soft:#34403A; --mine:rgba(159,179,166,.14); --now:#D98C7F;
+  --shadow:0 1px 2px rgba(0,0,0,.25), 0 10px 24px -16px rgba(0,0,0,.6); color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#111614; --panel:#1A201E; --ink:#E6ECE8; --muted:#97A39D; --line:#2C3531; --grid:#222A27;
-  --accent:#8FD1B5; --accent-ink:#0E1513; --mine:rgba(143,209,181,.12); --now:#FF7A62;
-  --pA:#D9541A; --pB:#8B5CF6; --p1:#0891B2; --p2:#DB2777; --p3:#A16207; --p4:#3B6FE0; --pX:#6B7280; color-scheme:dark}
+  --bg:#232527; --panel:#2C2F31; --ink:#E6E1DA; --muted:#A29B93; --line:#3B3F42; --grid:#313437;
+  --accent:#9FB3A6; --accent-ink:#1E2321; --accent-soft:#34403A; --mine:rgba(159,179,166,.14); --now:#D98C7F;
+  --shadow:0 1px 2px rgba(0,0,0,.25), 0 10px 24px -16px rgba(0,0,0,.6); color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
@@ -144,6 +148,53 @@ table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
 .confirm{display:inline-flex;gap:6px;align-items:center}
 @media (max-width:520px){h1{font-size:1.3rem}.tl{grid-template-columns:3.6em 1fr}.overlay{left:calc(3.6em + 8px)}}
 @media (prefers-reduced-motion:no-preference){.bar{transition:opacity .15s}}
+/* ===== 質感與動畫（只改外觀，不改尺寸與排列） ===== */
+h1{font-weight:700;letter-spacing:.16em}
+.sub{letter-spacing:.02em}
+.btn{border-radius:10px;transition:background-color .2s var(--ease),border-color .2s var(--ease),transform .12s var(--ease),box-shadow .2s var(--ease)}
+.btn:hover{border-color:var(--accent)}
+.btn:active{transform:scale(.97)}
+.btn.primary{box-shadow:0 6px 16px -10px var(--accent)}
+.btn.primary:hover{filter:brightness(1.06)}
+.chip{transition:border-color .2s var(--ease),box-shadow .2s var(--ease),background-color .2s var(--ease),transform .12s var(--ease)}
+.chip:active{transform:scale(.96)}
+.chip[aria-pressed="true"]{background:color-mix(in srgb,var(--c,var(--accent)) 10%,var(--panel))}
+.today,.day,.ids,.tablewrap,.otsum .pill,.bulk{border-color:transparent;box-shadow:var(--shadow);border-radius:16px}
+.day{transition:box-shadow .25s var(--ease),transform .25s var(--ease)}
+.day:hover{box-shadow:0 1px 2px rgba(69,66,63,.06),0 16px 30px -18px rgba(69,66,63,.45)}
+.day.is-today{box-shadow:0 0 0 1.5px var(--accent),var(--shadow)}
+.badge{border-radius:999px;padding:1px 8px}
+.lane{border-radius:4px}
+.bar{border-radius:6px;box-shadow:inset 0 1px 0 rgba(255,255,255,.18)}
+.mineband{border-radius:4px;border-left-color:color-mix(in srgb,var(--accent) 60%,transparent);border-right-color:color-mix(in srgb,var(--accent) 60%,transparent)}
+.nowline{box-shadow:0 0 0 3px color-mix(in srgb,var(--now) 18%,transparent)}
+.controls{border-bottom-color:transparent;box-shadow:0 10px 12px -14px rgba(69,66,63,.35)}
+.tabs{border-bottom-color:var(--line)}
+.tab{position:relative;border-bottom:0;transition:color .2s var(--ease)}
+.tab::after{content:"";position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:3px 3px 0 0;background:var(--accent);transform:scaleX(0);transition:transform .3s var(--ease)}
+.tab[aria-selected="true"]::after{transform:scaleX(1)}
+.watch{border-radius:12px}
+.toast{border-radius:14px;box-shadow:0 12px 30px -12px rgba(0,0,0,.45)}
+.pick{transition:background-color .15s var(--ease),border-color .15s var(--ease),transform .12s var(--ease)}
+.pick:active{transform:scale(.88)}
+table.ot tr td{transition:background-color .2s var(--ease)}
+@media (prefers-reduced-motion:no-preference){
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  @keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  @keyframes toastIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+  @keyframes drop{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  @keyframes breathe{0%,100%{opacity:1}50%{opacity:.55}}
+  .days.anim .day{animation:rise .5s var(--ease) both;animation-delay:calc(var(--i,0) * 55ms)}
+  .days.anim .bar{transform-origin:left center;animation:grow .7s var(--ease) both;animation-delay:calc(var(--i,0) * 55ms + 120ms)}
+  .today.anim{animation:rise .45s var(--ease) both}
+  .view.enter{animation:fade .3s var(--ease)}
+  .toast:not([hidden]){animation:toastIn .35s var(--ease)}
+  .bulk:not(.idle){animation:drop .25s var(--ease)}
+  .detail{animation:fade .25s var(--ease)}
+  .nowline{animation:breathe 2.4s ease-in-out infinite}
+}
+
 </style>
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
@@ -397,6 +448,7 @@ function renderToday(all, ps){
   card.innerHTML = html;
 }
 
+let lastAnimWeek = null;
 function renderDays(all, ps){
   const box = $('days'); box.innerHTML = '';
   const ids = weekIds();
@@ -406,13 +458,16 @@ function renderDays(all, ps){
   }
   if (!viewWeek || !allWeeks()[viewWeek]) viewWeek = weekFor(Date.now()) || ids.at(-1);
   const w = allWeeks()[viewWeek];
+  const anim = viewWeek !== lastAnimWeek; lastAnimWeek = viewWeek;
+  box.classList.toggle('anim', anim); $('todayCard').classList.toggle('anim', anim);
+  let di = 0;
   $('wkLabel').textContent = `${w.firstDay.slice(5).replace('-','/')} – ${w.lastDay.slice(5).replace('-','/')}`;
   const i = ids.indexOf(viewWeek); $('prevWk').disabled = i <= 0; $('nextWk').disabled = i >= ids.length-1;
   const todayK = dayKey(Date.now());
   for (let t = parseT(w.firstDay+'T00:00'); dayKey(t) <= w.lastDay; t = parseT(dayKey(t+DAY+2*H)+'T00:00')) {
     const a = t, b = a + DAY, k = dayKey(a);
     const items = clip(all, a, b);
-    const card = document.createElement('div'); card.className = 'day' + (k===todayK ? ' is-today' : ''); card.tabIndex = 0; card.id = 'day-'+k;
+    const card = document.createElement('div'); card.className = 'day' + (k===todayK ? ' is-today' : ''); card.tabIndex = 0; card.id = 'day-'+k; card.style.setProperty('--i', di++);
     const lanes = ps.filter(p => !me || true);
     const onDuty = new Set(items.map(x=>x[2].code));
     const mine = me ? merge(items.filter(x=>x[2].code===me).map(x=>[x[0],x[1]])) : [];
@@ -822,6 +877,7 @@ async function otExport(){
 function showTab(t){
   const ot = t === 'ot';
   $('viewDuty').hidden = ot; $('viewOT').hidden = !ot;
+  const v = ot ? $('viewOT') : $('viewDuty'); v.classList.remove('enter'); void v.offsetWidth; v.classList.add('enter');
   $('tabDuty').setAttribute('aria-selected', String(!ot)); $('tabOT').setAttribute('aria-selected', String(ot));
   try { localStorage.setItem('duty-tab', t); } catch {}
   if (ot) renderOT();
