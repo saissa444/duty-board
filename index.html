@@ -95,7 +95,7 @@ h1{font-family:var(--display);font-weight:900;font-size:1.6rem;letter-spacing:.0
 .idgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px}
 .idgrid label{display:flex;align-items:center;gap:6px;font-size:.85rem}
 .idgrid i{width:10px;height:10px;border-radius:2px;background:var(--c);flex:none}
-.idgrid input{font:inherit;font-family:var(--mono);font-size:.85rem;width:100%;min-width:0;border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:var(--bg);color:var(--ink)}
+.idgrid input{text-transform:uppercase;font:inherit;font-family:var(--mono);font-size:.85rem;width:100%;min-width:0;border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:var(--bg);color:var(--ink)}
 .otsum{display:flex;flex-wrap:wrap;gap:8px}
 .otsum .pill{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 12px;display:flex;align-items:baseline;gap:8px}
 .otsum .pill b{font-family:var(--mono);font-size:1.15rem;font-variant-numeric:tabular-nums}
@@ -681,9 +681,7 @@ function otForShift(s){
 }
 function otComputed(month, all, ps){
   const rows = [];
-  const withId = ps.filter(p => (otIds[p.name]||'').trim());
-  const targets = withId.length ? withId : ps;
-  for (const p of targets) for (const s of all.filter(x => x.code === p.code)) for (const o of otForShift(s)) {
+  for (const p of ps) for (const s of all.filter(x => x.code === p.code)) for (const o of otForShift(s)) {
     if (ymd(o.start).slice(0,7) !== month) continue;
     const wd = new Date(o.start).getDay();
     rows.push({id: (otIds[p.name]||'').trim(), name: p.name, cat: (wd===0||wd===6) ? '假日加班' : '平時加班',
@@ -698,8 +696,17 @@ function otMonths(all){
   for (const s of all) for (const o of otForShift(s)) set.add(ymd(o.start).slice(0,7));
   return [...set].sort();
 }
-function otRows(all, ps){ return otEdits[otMonth] ? otEdits[otMonth] : otComputed(otMonth, all || shifts(), ps || people()); }
-function otSave(rows){ otEdits[otMonth] = rows; writeJSON('duty-ot-v1', otEdits); }
+// 人員編號一律以「人員編號」設定為準（即時同步，清空也會跟著清空）
+// 完整資料（含沒填編號的人）
+function otBase(all, ps){ return (otEdits[otMonth] ? otEdits[otMonth] : otComputed(otMonth, all || shifts(), ps || people())).map(r => ({...r})); }
+// 畫面上顯示／匯出的資料：只顯示有填人員編號的人；清空編號就隱藏，重新填回就再出現
+function otRows(all, ps){
+  const has = n => Object.prototype.hasOwnProperty.call(otIds, n);
+  const known = new Set((ps || people()).map(p => p.name));
+  return otBase(all, ps).map((r, b) => ({...r, id: has(r.name) ? (otIds[r.name] || '') : r.id, _b: b}))
+    .filter(r => (has(r.name) || known.has(r.name)) ? !!(otIds[r.name] || '').trim() : true);
+}
+function otSave(rows){ otEdits[otMonth] = rows.map(({_b, ...r}) => r); writeJSON('duty-ot-v1', otEdits); }
 function renderOT(all, ps){
   all = all || shifts(); ps = ps || people();
   const months = otMonths(all);
@@ -709,9 +716,13 @@ function renderOT(all, ps){
     otMonth = months.includes(now) ? now : months.at(-1) || now;
   }
   sel.innerHTML = (months.length ? months : [otMonth]).map(m => `<option value="${m}"${m===otMonth?' selected':''}>${m.replace('/', ' 年 ')} 月</option>`).join('');
-  // 人員編號
-  $('idGrid').innerHTML = ps.map(p => `<label style="--c:${color(p.code)}"><i></i><span style="white-space:nowrap">${esc(p.name)}</span><input id="id-${esc(p.code)}" data-name="${esc(p.name)}" value="${esc(otIds[p.name]||'')}" placeholder="例 A0557" autocomplete="off"></label>`).join('') || '<span class="muted">上傳班表後會列出人員</span>';
+  // 人員編號（正在輸入時不重畫，避免游標跳掉）
+  if (!$('idGrid').contains(document.activeElement)) $('idGrid').innerHTML = ps.map(p => `<label style="--c:${color(p.code)}"><i></i><span style="white-space:nowrap">${esc(p.name)}</span><input id="id-${esc(p.code)}" data-name="${esc(p.name)}" value="${esc(otIds[p.name]||'')}" placeholder="例 A0557" autocomplete="off"></label>`).join('') || '<span class="muted">上傳班表後會列出人員</span>';
   if (!Object.values(otIds).some(v => (v||'').trim())) $('otIds').open = true;
+  renderOTTable(all, ps);
+}
+function renderOTTable(all, ps){
+  all = all || shifts(); ps = ps || people();
   const rows = otRows(all, ps);
   // 合計
   const tot = {}; for (const r of rows) tot[r.name] = (tot[r.name]||0) + (parseFloat(r.hours)||0);
@@ -727,7 +738,7 @@ function renderOT(all, ps){
     <td><input class="mono" data-k="hours" value="${esc(r.hours)}" style="width:3.5em" inputmode="decimal"></td>
     <td class="rm"><span class="pick" role="checkbox" tabindex="0" aria-checked="${otSel.has(i)}" aria-label="選取第 ${i+1} 筆備註" data-pick="${i}"></span><input data-k="remark" value="${esc(r.remark)}" list="otRemarks"></td>
     <td><button class="del" type="button" aria-label="刪除這筆" data-del="${i}">✕</button></td></tr>`).join('')
-    : `<tr><td colspan="8" class="empty">這個月沒有算出加班。可按「＋ 新增一筆」手動加入。</td></tr>`;
+    : `<tr><td colspan="8" class="empty">${Object.values(otIds).some(v => (v||'').trim()) ? '這個月沒有算出加班。可按「＋ 新增一筆」手動加入。' : '請先在上方「人員編號」填入要彙整的人，例如在自己名字旁填 A0557。'}</td></tr>`;
   $('otRemarks').innerHTML = [...new Set([OT_REMARK, '帶勤', '業務整理', '值星', '機動待命', ...rows.map(r => r.remark).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('');
   renderBulk();
   const missing = rows.some(r => !r.id);
@@ -854,31 +865,41 @@ $('otBulkApply').onclick = () => {
   const v = $('otBulkText').value.trim();
   if (!otSel.size) return;
   if (!v) { toast('請先輸入要套用的備註'); $('otBulkText').focus(); return; }
-  const rows = otRows().map((r, i) => otSel.has(i) ? {...r, remark: v} : {...r});
+  const view = otRows(); const pick = new Set([...otSel].map(i => view[i]?._b));
+  const rows = otBase().map((r, b) => pick.has(b) ? {...r, remark: v} : r);
   const n = otSel.size; otSave(rows); otSel.clear(); $('otBulkText').value = ''; renderOT(); toast(`已修改 ${n} 筆備註`);
 };
 $('otBulkText').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('otBulkApply').click(); } });
 $('otSelAll').onclick = () => { otSel = new Set(otRows().map((_, i) => i)); renderBulk(); };
 $('otSelNone').onclick = () => { otSel.clear(); otAnchor = null; renderBulk(); };
-$('idGrid').addEventListener('change', e => {
+// 人員編號：每打一個字就存起來並即時更新下方資料
+$('idGrid').addEventListener('input', e => {
   const inp = e.target.closest('input'); if (!inp) return;
   otIds[inp.dataset.name] = inp.value.trim().toUpperCase(); writeJSON('duty-ids', otIds);
-  // 已手動修改的月份：把空白編號補上
-  for (const m of Object.keys(otEdits)) otEdits[m] = otEdits[m].map(r => (r.name === inp.dataset.name && !r.id) ? {...r, id: otIds[r.name]} : r);
-  writeJSON('duty-ot-v1', otEdits);
-  renderOT();
+  renderOTTable();
+});
+$('idGrid').addEventListener('change', e => {
+  const inp = e.target.closest('input'); if (!inp) return;
+  inp.value = otIds[inp.dataset.name] || '';
 });
 $('otBody').addEventListener('change', e => {
   const el = e.target.closest('[data-k]'); if (!el) return;
-  const i = +el.closest('tr').dataset.i; const rows = otRows().map(r => ({...r}));
-  rows[i][el.dataset.k] = el.value.trim(); otSave(rows); renderOT();
+  const i = +el.closest('tr').dataset.i; const row = otRows()[i]; if (!row) return;
+  const v = el.value.trim();
+  if (el.dataset.k === 'id') {   // 在表格裡改編號＝改這個人的人員編號
+    otIds[row.name] = v.toUpperCase(); writeJSON('duty-ids', otIds);
+    const g = [...$('idGrid').querySelectorAll('input')].find(x => x.dataset.name === row.name); if (g) g.value = otIds[row.name];
+    renderOTTable(); return;
+  }
+  const rows = otBase(); rows[row._b][el.dataset.k] = v; otSave(rows); renderOT();
 });
 $('otBody').addEventListener('click', e => {
   const b = e.target.closest('[data-del]'); if (!b) return;
-  const rows = otRows().filter((_, i) => i !== +b.dataset.del); otSel.clear(); otSave(rows); renderOT(); toast('已刪除一筆');
+  const row = otRows()[+b.dataset.del]; if (!row) return;
+  const rows = otBase().filter((_, j) => j !== row._b); otSel.clear(); otSave(rows); renderOT(); toast('已刪除一筆');
 });
 $('otAdd').onclick = () => {
-  const rows = otRows().map(r => ({...r})); const last = rows.at(-1);
+  const rows = otBase(); const last = otRows().at(-1);
   const p = people().find(x => x.code === me) || people()[0] || {name:''};
   rows.push({id: last?.id || otIds[p.name] || '', name: last?.name || p.name, cat:'平時加班', date: otMonth + '/01', time:'1800', hours:'3', remark: OT_REMARK});
   otSave(rows); renderOT();
