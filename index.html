@@ -728,7 +728,8 @@ function otRows(all, ps){
     .sort(otSorter());
 }
 // 排序：人員編號／姓名／日期（同一人再依日期、時間）
-let otSort = 'id'; try { otSort = localStorage.getItem('duty-ot-sort') || 'id'; } catch {}
+let otSort = 'id';   // 每次打開都從「人員編號由小至大」開始
+try { localStorage.removeItem('duty-ot-sort'); } catch {}
 function otSorter(){
   const cmp = (a, b) => String(a).localeCompare(String(b), 'zh-Hant', {numeric: true});
   const when = (a, b) => cmp(a.date + a.time, b.date + b.time);
@@ -736,7 +737,7 @@ function otSorter(){
   if (otSort === 'date') return (a, b) => when(a, b) || cmp(a.id, b.id) || a._b - b._b;
   return (a, b) => (!a.id - !b.id) || cmp(a.id, b.id) || cmp(a.name, b.name) || when(a, b) || a._b - b._b;
 }
-function setSort(v){ otSort = v; try { localStorage.setItem('duty-ot-sort', v); } catch {} otSel.clear(); renderOTTable(); }
+function setSort(v){ otSort = v; otSel.clear(); renderOTTable(); }
 function otSave(rows){ otEdits[otMonth] = rows.map(({_b, ...r}) => r); writeJSON('duty-ot-v1', otEdits); }
 function renderOT(all, ps){
   all = all || shifts(); ps = ps || people();

@@ -1,5 +1,5 @@
 // 離線快取：第一次開啟時把整個 App 存到裝置裡，之後沒網路也能用
-const CACHE = 'duty-board-v12';
+const CACHE = 'duty-board-v13';
 const FILES = ['./', './index.html', './manifest.webmanifest', './pdfjs/pdf.min.mjs', './pdfjs/pdf.worker.min.mjs',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
