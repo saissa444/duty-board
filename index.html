@@ -545,7 +545,8 @@ loadWeeks();
 render();
 // Minimal BIFF8 (.xls, Excel 97-2003) writer: one sheet of text cells.
 // rows: [{cells:[...], style:'head'|'cell'|'note', height:twips?}]  styles: head = bordered + wrap, cell = bordered, note = red bold
-function buildXls(sheetName, rows, colWidths){
+// opts.lists: [{col, firstRow, lastRow, items:[...]}] → in-cell dropdowns (0-based rows/cols)
+function buildXls(sheetName, rows, colWidths, opts={}){
   const parts = []; let len = 0;
   const rec = (type, bytes) => { const b = new Uint8Array(4 + bytes.length); const dv = new DataView(b.buffer);
     dv.setUint16(0, type, true); dv.setUint16(2, bytes.length, true); b.set(bytes, 4); parts.push(b); len += b.length; return b; };
@@ -582,9 +583,8 @@ function buildXls(sheetName, rows, colWidths){
   rec(0x0809, u16(0x0600, 0x0010, 0x0DBB, 0x07CC, 0, 0, 0, 0).slice(0,16));
   const nRows = rows.length, nCols = Math.max(1, ...rows.map(r=>r.cells.length));
   const dim = new Uint8Array(14); const dd = new DataView(dim.buffer); dd.setUint32(0,0,true); dd.setUint32(4,nRows,true); dd.setUint16(8,0,true); dd.setUint16(10,nCols,true);
-  rec(0x0200, dim);
-  rec(0x023E, u16(0x06B6, 0, 0, 0x0040, 0, 0, 0, 0, 0));   // WINDOW2 (first sheet selected)
   (colWidths||[]).forEach((w,i) => { if (w) rec(0x007D, u16(i, i, Math.round(w*256), 15, 0, 0)); });
+  rec(0x0200, dim);
   const XF = {head:16, cell:17, note:18};
   rows.forEach((r, ri) => { if (r.height) { const b = new Uint8Array(16); const dv = new DataView(b.buffer);
     dv.setUint16(0, ri, true); dv.setUint16(2, 0, true); dv.setUint16(4, r.cells.length, true); dv.setUint16(6, r.height, true);
@@ -594,6 +594,24 @@ function buildXls(sheetName, rows, colWidths){
     if (v === null || v === undefined || v === '') { if (r.style !== 'note') rec(0x0201, u16(ri, ci, ix)); return; }   // BLANK keeps the border
     rec(0x0204, cat(u16(ri, ci, ix), ustr16(String(v))));  // LABEL
   }));
+  rec(0x023E, u16(0x06B6, 0, 0, 0x0040, 0, 0, 0, 0, 0));   // WINDOW2 (first sheet selected)
+  const lists = opts.lists || [];
+  if (lists.length) {
+    const dval = new Uint8Array(18); const dvv = new DataView(dval.buffer);
+    dvv.setUint32(10, 0xFFFFFFFF, true); dvv.setUint32(14, lists.length, true);
+    rec(0x01B2, dval);                                        // DVAL
+    const emptyStr = new Uint8Array([1, 0, 0, 0]);            // XLUnicodeString holding one NUL = "no text"
+    for (const L of lists) {
+      const joined = L.items.join('\0');
+      const ptg = new Uint8Array(3 + joined.length*2); ptg[0] = 0x17; ptg[1] = joined.length; ptg[2] = 1;
+      const pv = new DataView(ptg.buffer); for (let i=0;i<joined.length;i++) pv.setUint16(3+i*2, joined.charCodeAt(i), true);
+      const flags = 0x3 | 0x80 | 0x100 | 0x40000 | 0x80000;  // list, explicit items, allow blank, show messages
+      const head = new Uint8Array(4); new DataView(head.buffer).setUint32(0, flags >>> 0, true);
+      rec(0x01BE, cat(head, emptyStr, emptyStr, emptyStr, emptyStr,
+        u16(ptg.length, 0), ptg, u16(0, 0),
+        u16(1, L.firstRow, L.lastRow, L.col, L.col)));     // DV
+    }
+  }
   rec(0x000A, new Uint8Array(0));
   void bsAt;
   let wb = cat(...parts);
@@ -735,7 +753,7 @@ async function otExport(){
     {cells:['請務必依照範例的格式輸入資料，才不會造成匯入資料有誤，而出現錯誤訊息。'], style:'note', height:340},
     {cells:['加班日期的格式為：包含 / 斜線，共10碼(2008/09/01)。切勿輸入2008/9/1。'], style:'note', height:340}
   ];
-  const bytes = buildXls('Sheet1', sheet, [10.87,9.25,14.99,13.5,17.87,10.74,9.5,28.99]);
+  const bytes = buildXls('Sheet1', sheet, [10.87,9.25,14.99,13.5,17.87,10.74,9.5,28.99], {lists:[{col:2, firstRow:1, lastRow:rows.length, items:OT_CATS}]});  // 類別下拉選單
   const name = `OT_${otMonth.replace("/","")}.xls`;
   const file = new File([bytes], name, {type:'application/vnd.ms-excel'});
   try {
