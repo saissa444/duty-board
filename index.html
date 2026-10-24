@@ -137,6 +137,8 @@ button.th{font:inherit;font-size:.75rem;letter-spacing:.06em;color:var(--muted);
 button.th:hover{color:var(--ink)}
 button.th.on{color:var(--ink);font-weight:700}
 button.th.on::after{content:" ▲";font-size:.7em}
+/* 類別選單：四個字加下拉箭頭都要看得到 */
+table.ot select[data-k="cat"]{min-width:7.6em;padding-right:22px}
 /* 表格往右滑看備註時，姓名欄固定在左邊 */
 table.ot th:nth-child(2),table.ot td:nth-child(2){position:sticky;left:0;z-index:2;background:var(--panel);box-shadow:6px 0 8px -6px rgba(69,66,63,.35)}
 table.ot tr.sel td:nth-child(2){background:linear-gradient(var(--mine),var(--mine)),var(--panel)}
