@@ -18,6 +18,7 @@
   --bg:#F3F4F1; --panel:#FFFFFF; --ink:#1B2420; --muted:#5F6B66; --line:#D9DED9; --grid:#ECEFEB;
   --accent:#1F4D3F; --accent-ink:#FFFFFF; --mine:rgba(31,77,63,.10); --now:#C8331F;
   --pA:#C2410C; --pB:#7C3AED; --p1:#0E7490; --p2:#DB2777; --p3:#A16207; --p4:#2563EB; --pX:#6B7280;
+  --qA:#0F766E; --qB:#9333EA; --q1:#4D7C0F; --q2:#BE123C; --q3:#7C2D12; --q4:#4338CA;
   --display:system-ui,-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif; --body:system-ui,-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
 }
@@ -168,6 +169,7 @@ table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
 
   <div id="viewDuty" class="view">
   <div class="controls">
+    <div class="row" id="squadRow" hidden><span class="label">隊別</span><div class="row" id="squadChips"></div></div>
     <div class="row"><span class="label">我是</span><div class="row" id="meChips"></div></div>
     <div class="row"><span class="label">提醒</span>
       <select id="watchWho" class="sel" aria-label="提醒對象"></select>
@@ -231,19 +233,21 @@ table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
 <script>
 // Parses a 勤務分配表 PDF (as text items) into shifts. Pure function, no DOM.
 function parseDutyPages(pages) {
+  let squad = '';
   const COLS = [[140,185,'值星'],[185,230,'帶勤'],[230,320,'業務整理'],[320,410,'指定處所待命'],
                 [410,458,'基本教練(公差)'],[458,505,'機動待命'],[505,552,'常訓']];
   const pad = n => String(n).padStart(2,'0');
   const key = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`;
   const hours = {}; const names = {}; const days = [];
   for (const items of pages) {
-    const all = items.map(i => i.str).join('');
+    const all = items.map(i => i.str).join('').normalize('NFKC');
     if (!all.includes('勤務分配表')) continue;
-    const m = all.match(/(\d{3})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+    const m = all.match(/(\d{3})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})/);   // 有些頁面少打「日」
+    const sq = all.replace(/\s+/g, '').match(/大隊(.+?)勤務分配表/); if (sq && !squad) squad = sq[1];
     if (!m) continue;
     const base = new Date(+m[1]+1911, +m[2]-1, +m[3], 8);
     days.push(`${base.getFullYear()}-${pad(base.getMonth()+1)}-${pad(base.getDate())}`);
-    const its = items.filter(i => i.str.trim()).map(i => ({s:i.str.trim(), x:i.x, xc:i.x+i.w/2, yc:i.y+i.h/2}));
+    const its = items.filter(i => i.str.trim()).map(i => ({s:i.str.normalize('NFKC').trim(), x:i.x, xc:i.x+i.w/2, yc:i.y+i.h/2}));
     for (const c of its) {
       if (c.x > 560 && c.x < 590 && /^[A-Z0-9]$/.test(c.s)) {
         const near = its.filter(v => Math.abs(v.yc-c.yc) < 5 && v.x > 595).sort((a,b)=>a.x-b.x);
@@ -290,7 +294,7 @@ function parseDutyPages(pages) {
   shifts.sort((a,b) => a.start.localeCompare(b.start) || a.code.localeCompare(b.code));
   days.sort();
   const people = Object.entries(names).map(([code,v]) => ({code, ...v}));
-  return {firstDay: days[0], lastDay: days.at(-1), people, shifts};
+  return {firstDay: days[0], lastDay: days.at(-1), squad, people, shifts};
 }
 const PALETTE = {A:'var(--pA)',B:'var(--pB)','1':'var(--p1)','2':'var(--p2)','3':'var(--p3)','4':'var(--p4)'};
 const ORDER = ['A','B','1','2','3','4'];
@@ -302,7 +306,10 @@ const parseT = s => { const [d,t] = s.split('T'); const [y,m,dd] = d.split('-').
 const dayKey = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
 const md = t => { const d = new Date(t); return `${d.getMonth()+1}/${d.getDate()}`; };
 const hm = t => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
-const color = code => PALETTE[code] || 'var(--pX)';
+// 每個人以「姓名」辨識（不同隊的代號 A、1、2… 會重複）；顏色依隊別各用一組
+const PAL2 = {A:'var(--qA)',B:'var(--qB)','1':'var(--q1)','2':'var(--q2)','3':'var(--q3)','4':'var(--q4)'};
+let colorMap = {};
+const color = key => colorMap[key] || 'var(--pX)';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 let weeks = {};        // id -> week doc
@@ -312,19 +319,45 @@ let viewWeek = null;
 const open = new Set();
 
 function allWeeks(){ return {...weeks, ...local}; }
-function people(){
-  const map = {};
-  for (const w of Object.values(allWeeks())) for (const p of (w.people||[])) map[p.code] = p;
-  return ORDER.filter(c => map[c]).map(c => map[c]).concat(Object.values(map).filter(p => !ORDER.includes(p.code)));
+const NOSQ = '未標示隊別';
+const sqOf = w => w.squad || NOSQ;
+// 隊別依第一次上傳的時間排序（先傳的隊沿用原本的顏色）
+function squads(){
+  const first = {};
+  for (const w of Object.values(allWeeks())) { const q = sqOf(w), t = w.uploadedAt || ''; if (!(q in first) || t < first[q]) first[q] = t; }
+  return Object.keys(first).sort((a,b) => (first[a] < first[b] ? -1 : first[a] > first[b] ? 1 : a.localeCompare(b)));
 }
-function shifts(){
+let viewSquad = null; try { viewSquad = localStorage.getItem('duty-squad'); } catch {}
+const inView = w => !viewSquad || viewSquad === '*' || sqOf(w) === viewSquad;
+function people(scope){   // scope: undefined = 全部隊；'view' = 目前選的隊
+  const sqs = squads(); const map = {};
+  for (const w of Object.values(allWeeks())) {
+    if (scope === 'view' && !inView(w)) continue;
+    for (const p of (w.people||[])) map[p.name] = {code: p.name, name: p.name, role: p.role, oc: p.code, squad: sqOf(w)};
+  }
+  const rank = p => [sqs.indexOf(p.squad), ORDER.includes(p.oc) ? ORDER.indexOf(p.oc) : 99, p.name];
+  const list = Object.values(map).sort((a,b) => { const x = rank(a), y = rank(b); return x[0]-y[0] || x[1]-y[1] || x[2].localeCompare(y[2]); });
+  for (const p of list) if (!colorMap[p.code]) colorMap[p.code] = ((sqs.indexOf(p.squad) % 2) ? PAL2 : PALETTE)[p.oc] || 'var(--pX)';
+  return list;
+}
+function shifts(scope){
   const seen = new Map();
-  for (const w of Object.values(allWeeks())) for (const s of (w.shifts||[])) {
-    const k = s.code+s.start+s.end; if (!seen.has(k)) seen.set(k, {...s, s:parseT(s.start), e:parseT(s.end)});
+  for (const w of Object.values(allWeeks())) {
+    if (scope === 'view' && !inView(w)) continue;
+    const names = Object.fromEntries((w.people||[]).map(p => [p.code, p.name]));
+    for (const s of (w.shifts||[])) {
+      const name = names[s.code] || s.name;
+      const k = name+s.start+s.end;
+      if (!seen.has(k)) seen.set(k, {...s, code: name, name, oc: s.code, squad: sqOf(w), s:parseT(s.start), e:parseT(s.end)});
+    }
   }
   return [...seen.values()].sort((a,b)=>a.s-b.s);
 }
-function weekIds(){ return Object.keys(allWeeks()).sort(); }
+function weekIds(){
+  const byRange = {};
+  for (const [id, w] of Object.entries(allWeeks())) if (inView(w)) { const k = w.firstDay; if (!byRange[k]) byRange[k] = id; }
+  return Object.values(byRange).sort((a,b) => allWeeks()[a].firstDay.localeCompare(allWeeks()[b].firstDay));
+}
 function weekFor(t){
   const k = dayKey(t);
   return weekIds().find(id => { const w = allWeeks()[id]; return k >= w.firstDay && k <= w.lastDay; });
@@ -359,7 +392,7 @@ function watchNote(all, ps, a){
 }
 
 function renderChips(){
-  const ps = people();
+  const ps = people('view');
   const el = $('meChips'); el.innerHTML = '';
   const mk = (code, text, c) => {
     const b = document.createElement('button'); b.type='button'; b.className='chip'; b.id='me-'+(code||'none');
@@ -404,7 +437,10 @@ function renderDays(all, ps){
     box.innerHTML = `<div class="empty">還沒有班表。按「＋ 上傳勤務分配表 PDF」加入一週的勤務分配表，就會在這裡顯示每天誰在班。</div>`;
     $('wkLabel').textContent = '—'; return;
   }
-  if (!viewWeek || !allWeeks()[viewWeek]) viewWeek = weekFor(Date.now()) || ids.at(-1);
+  if (!ids.includes(viewWeek)) {   // 換隊別時，停在同一段日期；沒有就跳到本週或最新一週
+    const cur = allWeeks()[viewWeek];
+    viewWeek = (cur && ids.find(id => allWeeks()[id].firstDay === cur.firstDay)) || weekFor(Date.now()) || ids.at(-1);
+  }
   const w = allWeeks()[viewWeek];
   $('wkLabel').textContent = `${w.firstDay.slice(5).replace('-','/')} – ${w.lastDay.slice(5).replace('-','/')}`;
   const i = ids.indexOf(viewWeek); $('prevWk').disabled = i <= 0; $('nextWk').disabled = i >= ids.length-1;
@@ -452,9 +488,9 @@ function renderFoot(){
   const f = $('foot'); const w = allWeeks()[viewWeek];
   if (!w) { f.innerHTML = ''; return; }
   const unsaved = local[viewWeek] && !weeks[viewWeek];
-  f.innerHTML = `<span>來源：${esc(w.source||'勤務分配表')}${unsaved?'（這個瀏覽器無法存檔，關掉後會消失）':''}</span><span class="confirm" id="delWrap"><button class="btn" id="delBtn" type="button">移除這一週</button></span>`;
+  f.innerHTML = `<span>來源：${w.squad ? esc(w.squad) + '・' : ''}${esc(w.source||'勤務分配表')}${unsaved?'（這個瀏覽器無法存檔，關掉後會消失）':''}</span><span class="confirm" id="delWrap"><button class="btn" id="delBtn" type="button">移除這一週</button></span>`;
   $('delBtn').onclick = () => {
-    $('delWrap').innerHTML = `<span>確定移除 ${w.firstDay.slice(5)} 這週？</span><button class="btn" id="delYes" type="button">移除</button><button class="btn" id="delNo" type="button">取消</button>`;
+    $('delWrap').innerHTML = `<span>確定移除${w.squad ? ' ' + esc(w.squad) : ''} ${w.firstDay.slice(5)} 這週？</span><button class="btn" id="delYes" type="button">移除</button><button class="btn" id="delNo" type="button">取消</button>`;
     $('delNo').onclick = renderFoot;
     $('delYes').onclick = async () => {
       const id = viewWeek; delete local[id];
@@ -466,9 +502,14 @@ function renderFoot(){
 }
 
 // 值星官：每個「全員休假日」之後第一個上班的人，就是到下一個全員休假日為止的值星官
-function dutyOfficers(all){
+function dutyOfficers(allShifts){
+  const out = [];
+  for (const q of squads()) out.push(...dutyOfficersOf(allShifts.filter(s => s.squad === q), Object.values(allWeeks()).filter(w => sqOf(w) === q)));
+  return out;
+}
+function dutyOfficersOf(all, wks){
   const days = new Set();
-  for (const w of Object.values(allWeeks())) {
+  for (const w of wks) {
     for (let t = parseT(w.firstDay+'T00:00'); dayKey(t) <= w.lastDay; t = parseT(dayKey(t+DAY+2*H)+'T00:00')) days.add(dayKey(t));
   }
   const sorted = [...days].sort();
@@ -495,10 +536,22 @@ let officers = [];
 const isOfficer = s => officers.some(o => o.code === s.code && s.s >= o.from && s.s < o.to);
 
 function render(){
-  const ps = people(), all = shifts();
-  officers = dutyOfficers(all);
-  renderChips(); renderWatchCtl(); renderToday(all, ps); renderDays(all, ps); renderFoot();
-  if (typeof renderOT === 'function' && !$('viewOT').hidden) renderOT(all, ps);
+  const sqs = squads();
+  if (viewSquad && viewSquad !== '*' && !sqs.includes(viewSquad)) viewSquad = null;
+  if (!viewSquad && sqs.length) {   // 預設：「我」所在的隊，否則最早上傳的隊
+    const mine = me && people().find(p => p.code === me);
+    viewSquad = mine ? mine.squad : sqs[0];
+  }
+  const allAll = shifts(); officers = dutyOfficers(allAll);
+  const ps = people('view'), all = shifts('view');
+  renderSquads(sqs); renderChips(); renderWatchCtl(); renderToday(all, ps); renderDays(all, ps); renderFoot();
+  if (typeof renderOT === 'function' && !$('viewOT').hidden) renderOT(allAll, people());
+}
+function renderSquads(sqs){
+  const row = $('squadRow'); row.hidden = sqs.length < 2;
+  if (row.hidden) return;
+  const opts = [...sqs.map(q => [q, q]), ['*', '全部']];
+  $('squadChips').innerHTML = opts.map(([v, t]) => `<button type="button" class="chip" data-sq="${esc(v)}" aria-pressed="${viewSquad === v}">${esc(t)}</button>`).join('');
 }
 
 let toastT; function toast(msg){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true, 3500); }
@@ -507,6 +560,8 @@ $('prevWk').onclick = () => { const ids=weekIds(); viewWeek = ids[Math.max(0, id
 $('nextWk').onclick = () => { const ids=weekIds(); viewWeek = ids[Math.min(ids.length-1, ids.indexOf(viewWeek)+1)]; render(); };
 $('thisWk').onclick = () => { viewWeek = weekFor(Date.now()) || null; if (!viewWeek) toast('還沒有本週的班表'); render(); };
 $('watchWho').onchange = saveWatch; $('watchHour').onchange = saveWatch;
+$('squadChips').addEventListener('click', e => { const b = e.target.closest('[data-sq]'); if (!b) return;
+  viewSquad = b.dataset.sq; try { localStorage.setItem('duty-squad', viewSquad); } catch {} render(); });
 $('uploadBtn').onclick = () => $('pdfInput').click();
 
 let pdfReady;
@@ -532,13 +587,19 @@ $('pdfInput').onchange = async e => {
         const r = parseDutyPages(pages);
         if (!r.firstDay) throw new Error('找不到勤務分配表的日期，請確認是同一種格式的 PDF');
         const week = {...r, source: f.name, uploadedAt: new Date().toISOString()};
-        const id = r.firstDay;
+        const id = r.firstDay + (r.squad ? '_' + r.squad : '');
         local[id] = week; viewWeek = id;
+        if (viewSquad !== '*') { viewSquad = sqOf(week); try { localStorage.setItem('duty-squad', viewSquad); } catch {} }
+        // 舊版存的同一週（沒有隊別、人員相同）直接換成新的
+        const names = new Set((week.people||[]).map(p => p.name)); const stOld = readJSON(STORE, {});
+        for (const [oid, ow] of Object.entries(stOld)) if (oid !== id && !ow.squad && ow.firstDay === week.firstDay && (ow.people||[]).filter(p => names.has(p.name)).length >= 2) { delete stOld[oid]; delete weeks[oid]; delete local[oid]; }
+        writeJSON(STORE, stOld);
         const saved = writeJSON(STORE, {...readJSON(STORE, {}), [id]: week});
         const h = readJSON(HIDDEN, []).filter(x => x !== id); writeJSON(HIDDEN, h);
         if (saved) { delete local[id]; weeks[id] = week; }
+        loadWeeks();
         render();
-        toast(`已加入 ${r.firstDay.slice(5)} – ${r.lastDay.slice(5)}，共 ${r.shifts.length} 個班` + (saved ? '' : '（這個瀏覽器無法存檔，關掉後會消失）'));
+        toast(`已加入${r.squad ? ' ' + r.squad : ''} ${r.firstDay.slice(5)} – ${r.lastDay.slice(5)}，共 ${r.shifts.length} 個班` + (saved ? '' : '（這個瀏覽器無法存檔，關掉後會消失）'));
       } catch (err) { toast(`${f.name}：${err.message || err}`); }
     }
   } catch (err) { toast(err.message || String(err)); }
@@ -555,9 +616,21 @@ function loadWeeks(){
   const saved = readJSON(STORE, {});
   const out = {};
   for (const [id, w] of Object.entries({...SEED, ...saved})) if (!hidden.has(id) || saved[id]) out[id] = w;
+  // 舊版存的週次沒有隊別：與其他週有 2 位以上同名者，就歸到那一隊
+  const known = Object.values(out).filter(w => w.squad);
+  for (const w of Object.values(out)) if (!w.squad) {
+    const names = new Set((w.people||[]).map(p => p.name));
+    const hit = known.find(k => (k.people||[]).filter(p => names.has(p.name)).length >= 2);
+    if (hit) w.squad = hit.squad;
+  }
   weeks = out;
 }
 loadWeeks();
+if (me && me.length === 1) {   // 舊版用代號記「我是誰」，改成記姓名
+  const w = Object.values(weeks).sort((a,b) => (b.uploadedAt||'').localeCompare(a.uploadedAt||''))[0];
+  const p = w && (w.people||[]).find(x => x.code === me);
+  me = p ? p.name : null; try { me ? localStorage.setItem('duty-me', me) : localStorage.removeItem('duty-me'); } catch {}
+}
 render();
 // Minimal BIFF8 (.xls, Excel 97-2003) writer: one sheet of text cells.
 // rows: [{cells:[...], style:'head'|'cell'|'note', height:twips?}]  styles: head = bordered + wrap, cell = bordered, note = red bold
