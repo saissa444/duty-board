@@ -965,15 +965,15 @@ function downloadFile(bytes, name, type){
   const a = document.createElement('a'); a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
-function offerFile(bytes, name, types, appsText){
+function offerFile(bytes, name, types, dlLabel, dlHint, shareLabel){
   if (!isPhone()) { downloadFile(bytes, name, types[0]); toast(`已匯出 ${name}`); return; }
   const f = shareableFile(bytes, name, types);
   const sh = $('saveSheet');
   sh.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
       <h2 id="sheetTitle">${esc(name)} 已準備好</h2>
-      ${f ? `<button class="btn primary big" id="sheetShare" type="button">傳送到其他 App</button><p class="sub">可選 ${esc(appsText)}。</p>`
-          : `<p class="sub">這台手機不支援直接傳送，請改用下面的「下載檔案」。</p>`}
-      <button class="btn big" id="sheetDl" type="button">下載檔案</button>
+      <button class="btn primary big" id="sheetDl" type="button">${esc(dlLabel)}</button>
+      <p class="sub">${esc(dlHint)}</p>
+      ${f ? `<button class="btn big" id="sheetShare" type="button">${esc(shareLabel)}</button>` : ''}
       <p class="sub" id="sheetMsg"></p>
       <button class="btn" id="sheetClose" type="button">關閉</button>
     </div>`;
@@ -985,7 +985,7 @@ function offerFile(bytes, name, types, appsText){
     navigator.share({files:[f], title:name}).then(() => { close(); toast(`已匯出 ${name}`); })
       .catch(e => { if (e && e.name === 'AbortError') return; $('sheetMsg').textContent = `傳送失敗（${e && e.name || e}），請改用「下載檔案」。`; });
   };
-  $('sheetDl').onclick = () => { downloadFile(bytes, name, types[0]); $('sheetMsg').textContent = 'iPhone 若出現預覽畫面，請點右上角或下方的分享按鈕，再選 Excel、Numbers 或「儲存到檔案」。'; };
+  $('sheetDl').onclick = () => downloadFile(bytes, name, types[0]);
 }
 async function otExport(){
   const rows = otRows();
@@ -1000,7 +1000,7 @@ async function otExport(){
   ];
   const bytes = buildXls('Sheet1', sheet, [10.87,9.25,14.99,13.5,17.87,10.74,9.5,28.99], {lists:[{col:2, firstRow:1, lastRow:rows.length, items:OT_CATS}]});  // 類別下拉選單
   const name = `OT_${otMonth.replace("/","")}.xls`;
-  offerFile(bytes, name, ['application/vnd.ms-excel', 'application/octet-stream', ''], 'Excel、Numbers、LINE 或「儲存到檔案」');
+  offerFile(bytes, name, ['application/vnd.ms-excel', 'application/octet-stream', ''], '下載並用 Excel／Numbers 開啟', '出現預覽畫面後，點分享按鈕選 Excel 或 Numbers 開啟。', '傳送（LINE、儲存到檔案）');
 }
 // 事件
 const TABS = {duty:['tabDuty','viewDuty'], ot:['tabOT','viewOT'], bk:['tabBk','viewBk']};
@@ -1179,7 +1179,7 @@ $('bkExport').onclick = async () => {
   const d = new Date(); const stamp = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
   const body = {app: 'duty-board', version: 1, exportedAt: d.toISOString(), data: bkSnapshot()};
   const name = `duty-backup_${stamp}.json`;
-  offerFile(new TextEncoder().encode(JSON.stringify(body, null, 1)), name, ['application/json', 'text/plain', 'application/octet-stream', ''], '「儲存到檔案」、LINE 或 AirDrop');
+  offerFile(new TextEncoder().encode(JSON.stringify(body, null, 1)), name, ['application/json', 'text/plain', 'application/octet-stream', ''], '下載備份檔', '出現預覽畫面後，點分享按鈕選「儲存到檔案」。', '傳送（LINE、AirDrop、儲存到檔案）');
 };
 $('bkPick').onclick = () => $('bkInput').click();
 $('bkInput').onchange = async e => {
