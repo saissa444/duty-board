@@ -193,7 +193,6 @@ table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
         </select></label>
       </div>
       <div class="row">
-        <button class="btn" id="otAdd" type="button">＋ 新增一筆</button>
         <button class="btn" id="otReset" type="button">依班表重新計算</button>
         <button class="btn primary" id="otExport" type="button">匯出 .xls</button>
       </div>
@@ -760,7 +759,7 @@ function renderOTTable(all, ps){
     <td><input class="mono" data-k="hours" value="${esc(r.hours)}" style="width:3.5em" inputmode="decimal"></td>
     <td class="rm"><span class="pick" role="checkbox" tabindex="0" aria-checked="${otSel.has(i)}" aria-label="選取第 ${i+1} 筆備註" data-pick="${i}"></span><input data-k="remark" value="${esc(r.remark)}" list="otRemarks"></td>
     <td><button class="del" type="button" aria-label="刪除這筆" data-del="${i}">✕</button></td></tr>`).join('')
-    : `<tr><td colspan="8" class="empty">${Object.values(otIds).some(v => (v||'').trim()) ? '這個月沒有算出加班。可按「＋ 新增一筆」手動加入。' : '請先在上方「人員編號」填入要彙整的人，例如在自己名字旁填 A0557。'}</td></tr>`;
+    : `<tr><td colspan="8" class="empty">${Object.values(otIds).some(v => (v||'').trim()) ? '這個月沒有算出加班。' : '請先在上方「人員編號」填入要彙整的人，例如在自己名字旁填 A0557。'}</td></tr>`;
   $('otRemarks').innerHTML = [...new Set([OT_REMARK, '帶勤', '業務整理', '值星', '機動待命', ...rows.map(r => r.remark).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('');
   renderBulk();
   const missing = rows.some(r => !r.id);
@@ -922,12 +921,6 @@ $('otBody').addEventListener('click', e => {
   const row = otRows()[+b.dataset.del]; if (!row) return;
   const rows = otBase().filter((_, j) => j !== row._b); otSel.clear(); otSave(rows); renderOT(); toast('已刪除一筆');
 });
-$('otAdd').onclick = () => {
-  const rows = otBase(); const last = otRows().at(-1);
-  const p = people().find(x => x.code === me) || people()[0] || {name:''};
-  rows.push({id: last?.id || otIds[p.name] || '', name: last?.name || p.name, cat:'平時加班', date: otMonth + '/01', time:'1800', hours:'3', remark: OT_REMARK});
-  otSave(rows); renderOT();
-};
 $('otReset').onclick = () => { otSel.clear(); delete otEdits[otMonth]; writeJSON('duty-ot-v1', otEdits); renderOT(); toast('已依班表重新計算'); };
 $('otExport').onclick = otExport;
 try { if (localStorage.getItem('duty-tab') === 'ot') showTab('ot'); } catch {}
