@@ -522,7 +522,8 @@ function loadWeeks(){
 }
 loadWeeks();
 render();
-// Minimal BIFF8 (.xls, Excel 97-2003) writer: one sheet, text cells, column widths.
+// Minimal BIFF8 (.xls, Excel 97-2003) writer: one sheet of text cells.
+// rows: [{cells:[...], style:'head'|'cell'|'note', height:twips?}]  styles: head = bordered + wrap, cell = bordered, note = red bold
 function buildXls(sheetName, rows, colWidths){
   const parts = []; let len = 0;
   const rec = (type, bytes) => { const b = new Uint8Array(4 + bytes.length); const dv = new DataView(b.buffer);
@@ -536,12 +537,20 @@ function buildXls(sheetName, rows, colWidths){
   rec(0x0809, u16(0x0600, 0x0005, 0x0DBB, 0x07CC, 0, 0, 0, 0).slice(0,16));
   rec(0x0042, u16(1200));                                   // CODEPAGE: UTF-16
   rec(0x003D, u16(0x0168, 0x001E, 0x3A98, 0x2328, 0x0038, 0, 0, 1, 0x0258)); // WINDOW1
-  const font = name => cat(u16(0x00C8, 0, 0x7FFF, 0x0190, 0), new Uint8Array([0,0,0,0]), ustr8(name));
-  for (let i=0;i<5;i++) rec(0x0031, font('新細明體'));        // FONT ×5 (index 4 is skipped by Excel)
+  const font = (name, opt={}) => cat(u16(240, 0, opt.color ?? 0x7FFF, opt.bold ? 0x02BC : 0x0190, 0), new Uint8Array([0,0,0x88,0]), ustr8(name));
+  for (let i=0;i<5;i++) rec(0x0031, font('新細明體'));        // FONT ×5 → indexes 0,1,2,3,5 (4 is skipped)
+  rec(0x0031, font('新細明體', {color:0x000A, bold:true}));   // FONT index 6: red bold
   const styleXF = hex('00 00 00 00 F5 FF 20 00 00 F4 00 00 00 00 00 00 00 00 C0 20');
   for (let i=0;i<15;i++) rec(0x00E0, styleXF);
   rec(0x00E0, hex('00 00 00 00 01 00 20 00 00 00 00 00 00 00 00 00 00 00 C0 20'));   // XF 15: default cell
-  rec(0x00E0, hex('00 00 31 00 01 00 20 00 00 00 00 00 00 00 00 00 00 00 C0 20'));   // XF 16: text "@" (builtin 49)
+  const xf = (fontIx, align, border) => { const b = new Uint8Array(20); const dv = new DataView(b.buffer);
+    dv.setUint16(0, fontIx, true); dv.setUint16(2, 49, true); dv.setUint16(4, 0x0001, true);   // text "@", locked
+    b[6] = align; b[9] = 0x04 | 0x08 | 0x10 | (border ? 0x20 : 0);
+    if (border) { dv.setUint32(10, (0x1111 | (8 << 16) | (8 << 23)) >>> 0, true); dv.setUint32(14, 8 | (8 << 7), true); }
+    dv.setUint16(18, 0x20C0, true); return b; };
+  rec(0x00E0, xf(0, 0x18, true));    // XF 16: header — wrap, vertically centred, thin borders
+  rec(0x00E0, xf(0, 0x20, true));    // XF 17: data cell — bottom aligned, thin borders
+  rec(0x00E0, xf(6, 0x20, false));   // XF 18: red bold note
   rec(0x0293, hex('00 80 00 FF'));                         // STYLE: Normal
   const bs = rec(0x0085, cat(new Uint8Array(4), u16(0), ustr8(sheetName)));  // BOUNDSHEET (offset patched below)
   const bsAt = len - bs.length;
@@ -550,14 +559,19 @@ function buildXls(sheetName, rows, colWidths){
   const sheetStart = len;
   new DataView(bs.buffer).setUint32(4, sheetStart, true);
   rec(0x0809, u16(0x0600, 0x0010, 0x0DBB, 0x07CC, 0, 0, 0, 0).slice(0,16));
-  const nRows = rows.length, nCols = Math.max(1, ...rows.map(r=>r.length));
+  const nRows = rows.length, nCols = Math.max(1, ...rows.map(r=>r.cells.length));
   const dim = new Uint8Array(14); const dd = new DataView(dim.buffer); dd.setUint32(0,0,true); dd.setUint32(4,nRows,true); dd.setUint16(8,0,true); dd.setUint16(10,nCols,true);
   rec(0x0200, dim);
   rec(0x023E, u16(0x06B6, 0, 0, 0x0040, 0, 0, 0, 0, 0));   // WINDOW2 (first sheet selected)
   (colWidths||[]).forEach((w,i) => { if (w) rec(0x007D, u16(i, i, Math.round(w*256), 15, 0, 0)); });
-  rows.forEach((r, ri) => r.forEach((v, ci) => {
-    if (v === null || v === undefined || v === '') return;
-    rec(0x0204, cat(u16(ri, ci, 16), ustr16(String(v))));  // LABEL with text format
+  const XF = {head:16, cell:17, note:18};
+  rows.forEach((r, ri) => { if (r.height) { const b = new Uint8Array(16); const dv = new DataView(b.buffer);
+    dv.setUint16(0, ri, true); dv.setUint16(2, 0, true); dv.setUint16(4, r.cells.length, true); dv.setUint16(6, r.height, true);
+    dv.setUint32(12, (0x0140 | (15 << 16)) >>> 0, true); rec(0x0208, b); } });
+  rows.forEach((r, ri) => r.cells.forEach((v, ci) => {
+    const ix = XF[r.style] ?? 17;
+    if (v === null || v === undefined || v === '') { if (r.style !== 'note') rec(0x0201, u16(ri, ci, ix)); return; }   // BLANK keeps the border
+    rec(0x0204, cat(u16(ri, ci, ix), ustr16(String(v))));  // LABEL
   }));
   rec(0x000A, new Uint8Array(0));
   void bsAt;
@@ -691,9 +705,10 @@ async function otExport(){
   const bad = otValidate(rows);
   if (bad.length) { toast(bad[0] + (bad.length > 1 ? `（另有 ${bad.length-1} 個問題）` : '')); return; }
   const sheet = [
-    ['類別：', ...OT_CATS],
-    ['人員編號','姓名','類別','加班日期(例：2008/01/01)','申請加班、公差的開始時間(例：0800、1600、1700)','可補休時數\n(不包括公假)','','備註'],
-    ...rows.map(r => [r.id, r.name, r.cat, r.date, r.time, r.hours, '', r.remark])
+    {cells:['人員編號','姓名','類別','加班日期(例：2008/01/01)','申請加班、公差的開始時間(例：0800、1600、1700)','可補休時數\n(不包括公假)','','備註'], style:'head', height:900},
+    ...rows.map(r => ({cells:[r.id, r.name, r.cat, r.date, r.time, r.hours, '', r.remark], style:'cell', height:340})),
+    {cells:['請務必依照範例的格式輸入資料，才不會造成匯入資料有誤，而出現錯誤訊息。'], style:'note', height:340},
+    {cells:['加班日期的格式為：包含 / 斜線，共10碼(2008/09/01)。切勿輸入2008/9/1。'], style:'note', height:340}
   ];
   const bytes = buildXls('Sheet1', sheet, [10.87,9.25,14.99,13.5,17.87,10.74,9.5,28.99]);
   const name = `OT_${otMonth.replace("/","")}.xls`;
