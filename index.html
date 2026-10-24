@@ -149,6 +149,9 @@ table.ot td:nth-child(2) input{font-weight:700;color:var(--ink)}
 .bkstats div{background:var(--bg);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
 .bkstats b{font-family:var(--mono);font-size:1.25rem;font-variant-numeric:tabular-nums}
 .bkstats span{font-size:.8rem;color:var(--muted)}
+.bkdiff summary{cursor:pointer;font-size:.88rem;color:var(--accent);font-weight:700}
+.bkdiff ul{margin:8px 0 0;padding-left:1.2em;display:flex;flex-direction:column;gap:4px;font-size:.85rem}
+.bkdiff b{font-family:var(--mono);font-weight:600}
 .bkconfirm{border:1.5px solid var(--accent);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;font-size:.9rem}
 .bkconfirm ul{margin:0;padding-left:1.2em;color:var(--muted)}
 table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
@@ -299,6 +302,7 @@ table.ot tr td{transition:background-color .2s var(--ease)}
     <section class="bkcard">
       <h2>這台裝置目前的資料</h2>
       <div class="bkstats" id="bkStats"></div>
+      <details class="bkdiff" id="bkDiffs" hidden></details>
     </section>
     <section class="bkcard">
       <h2>匯出備份</h2>
@@ -419,14 +423,16 @@ let viewWeek = null;
 const open = new Set();
 
 function allWeeks(){ return {...weeks, ...local}; }
-function people(){
+function people(){ return peopleFrom(allWeeks()); }
+function shifts(){ return shiftsFrom(allWeeks()); }
+function peopleFrom(wks){
   const map = {};
-  for (const w of Object.values(allWeeks())) for (const p of (w.people||[])) map[p.code] = p;
+  for (const w of Object.values(wks)) for (const p of (w.people||[])) map[p.code] = p;
   return ORDER.filter(c => map[c]).map(c => map[c]).concat(Object.values(map).filter(p => !ORDER.includes(p.code)));
 }
-function shifts(){
+function shiftsFrom(wks){
   const seen = new Map();
-  for (const w of Object.values(allWeeks())) for (const s of (w.shifts||[])) {
+  for (const w of Object.values(wks)) for (const s of (w.shifts||[])) {
     const k = s.code+s.start+s.end; if (!seen.has(k)) seen.set(k, {...s, s:parseT(s.start), e:parseT(s.end)});
   }
   return [...seen.values()].sort((a,b)=>a.s-b.s);
@@ -829,7 +835,34 @@ function otMonths(all){
 }
 // 人員編號一律以「人員編號」設定為準（即時同步，清空也會跟著清空）
 // 完整資料（含沒填編號的人）
-function otBase(all, ps){ return (otEdits[otMonth] ? otEdits[otMonth] : otComputed(otMonth, all || shifts(), ps || people())).map(r => ({...r})); }
+const OT_F = ['cat','date','time','hours','remark'];
+function otBase(all, ps){
+  if (otEdits[otMonth]) return otEdits[otMonth].map(r => ({...r}));
+  // 第一次修改這個月時，記下每一筆原本的內容，之後才能列出「改了什麼」
+  return otComputed(otMonth, all || shifts(), ps || people()).map(r => ({...r, orig: Object.fromEntries(OT_F.map(f => [f, r[f]]))}));
+}
+// 列出手動修改：比對「目前的資料」和「依班表算出來的原始資料」
+function otDiffs(edits, wks, ids){
+  const LABEL = {cat:'類別', date:'日期', time:'開始時間', hours:'時數', remark:'備註'};
+  const show = (f, v) => f === 'date' ? String(v||'').slice(5) : (v || '（空白）');
+  const all = shiftsFrom(wks), ps = peopleFrom(wks), out = [];
+  for (const month of Object.keys(edits || {}).sort()) {
+    const comp = otComputed(month, all, ps), used = new Set();
+    for (const e of edits[month] || []) {
+      let ci = -1;
+      if (e.orig) ci = comp.findIndex((c,i) => !used.has(i) && c.name === e.name && OT_F.every(f => c[f] === e.orig[f]));
+      if (ci < 0) ci = comp.findIndex((c,i) => !used.has(i) && c.name === e.name && c.date === e.date && c.time === e.time);
+      if (ci < 0 && !e.orig) ci = comp.findIndex((c,i) => !used.has(i) && c.name === e.name && c.date === e.date);
+      const base = ci >= 0 ? comp[ci] : e.orig; if (ci >= 0) used.add(ci);
+      const who = `${(ids && ids[e.name]) || e.id || ''} ${e.name} ${String((base||e).date||'').slice(5)}`.trim();
+      if (!base) { out.push({month, who, text: '新增'}); continue; }
+      const ch = OT_F.filter(f => String(e[f]||'') !== String(base[f]||''));
+      if (ch.length) out.push({month, who, text: ch.map(f => `${LABEL[f]} ${show(f, base[f])} → ${show(f, e[f])}`).join('、')});
+    }
+    comp.forEach((c,i) => { if (!used.has(i)) out.push({month, who: `${(ids && ids[c.name]) || ''} ${c.name} ${c.date.slice(5)}`.trim(), text: `${c.time} 已刪除`}); });
+  }
+  return out;
+}
 // 畫面上顯示／匯出的資料：只顯示有填人員編號的人；清空編號就隱藏，重新填回就再出現
 function otRows(all, ps){
   const has = n => Object.prototype.hasOwnProperty.call(otIds, n);
@@ -894,7 +927,8 @@ function renderOTTable(all, ps){
   $('otRemarks').innerHTML = [...new Set([OT_REMARK, '帶勤', '業務整理', '值星', '機動待命', ...rows.map(r => r.remark).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('');
   renderBulk();
   const missing = rows.some(r => !r.id);
-  $('otNote').textContent = (otEdits[otMonth] ? '這個月已手動修改；按「依班表重新計算」可還原。' : '依班表自動計算。') + (missing ? ' 有幾筆沒有人員編號，請在上方「人員編號」填寫。' : '');
+  const nEd = otEdits[otMonth] ? otDiffs({[otMonth]: otEdits[otMonth]}, allWeeks(), otIds).length : 0;
+  $('otNote').textContent = (otEdits[otMonth] ? (nEd ? `這個月有 ${nEd} 筆手動修改；按「依班表重新計算」可還原。` : '這個月已手動修改過；按「依班表重新計算」可還原。') : '依班表自動計算。') + (missing ? ' 有幾筆沒有人員編號，請在上方「人員編號」填寫。' : '');
 }
 function otValidate(rows){
   const bad = [];
@@ -1090,13 +1124,16 @@ function bkSummary(data){
   const j = k => { try { return JSON.parse(data[k]); } catch { return null; } };
   const wk = j('duty-weeks-v1') || {}, ids = j('duty-ids') || {}, ot = j('duty-ot-v1') || {};
   const days = Object.values(wk).flatMap(w => [w.firstDay, w.lastDay]).filter(Boolean).sort();
+  let diffs = []; try { diffs = otDiffs(ot, wk, ids); } catch (e) { console.warn(e); }
   return { weeks: Object.keys(wk).length, range: days.length ? `${days[0].slice(5).replace('-','/')} – ${days.at(-1).slice(5).replace('-','/')}` : '—',
-           ids: Object.values(ids).filter(v => (v||'').trim()).length, months: Object.keys(ot).length };
+           ids: Object.values(ids).filter(v => (v||'').trim()).length, edits: diffs.length, diffs };
 }
 function renderBackup(){
   const sm = bkSummary(bkSnapshot());
-  $('bkStats').innerHTML = [[sm.weeks, '週班表'], [sm.range, '班表範圍'], [sm.ids, '位已填人員編號'], [sm.months, '個月份有手動修改']]
+  $('bkStats').innerHTML = [[sm.weeks, '週班表'], [sm.range, '班表範圍'], [sm.ids, '位已填人員編號'], [sm.edits, '筆資料有手動修改']]
     .map(([v,l]) => `<div><b>${esc(String(v))}</b><span>${l}</span></div>`).join('');
+  $('bkDiffs').hidden = !sm.edits;
+  $('bkDiffs').innerHTML = sm.edits ? `<summary>查看 ${sm.edits} 筆修改</summary><ul>${sm.diffs.map(d => `<li><b>${esc(d.who)}</b>　${esc(d.text)}</li>`).join('')}</ul>` : '';
 }
 async function saveFile(blob, name){
   const file = new File([blob], name, {type: blob.type});
@@ -1123,7 +1160,7 @@ $('bkInput').onchange = async e => {
   const sm = bkSummary(data);
   const box = $('bkConfirm'); box.hidden = false;
   box.innerHTML = `<div><b>${esc(f.name)}</b><span class="muted">（${body.exportedAt ? esc(new Date(body.exportedAt).toLocaleString('zh-TW')) + ' 匯出' : '匯出時間不明'}）</span></div>
-    <ul><li>${sm.weeks} 週班表（${esc(sm.range)}）</li><li>${sm.ids} 位人員編號</li><li>${sm.months} 個月份的加班修改</li></ul>
+    <ul><li>${sm.weeks} 週班表（${esc(sm.range)}）</li><li>${sm.ids} 位人員編號</li><li>${sm.edits} 筆加班資料有手動修改</li></ul>
     <div class="row"><button class="btn primary" id="bkReplace" type="button">取代目前資料</button><button class="btn" id="bkMerge" type="button">合併</button><button class="btn" id="bkCancel" type="button">取消</button></div>
     <p class="sub" style="margin:0">「取代」：這台裝置的資料全部換成備份檔的內容。「合併」：保留這台裝置的資料，再加入備份檔的內容；同一週、同一人、同一個月份以備份檔為準。</p>`;
   const apply = merge => {
