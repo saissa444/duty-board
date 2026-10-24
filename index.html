@@ -109,6 +109,18 @@ table.ot input:focus,table.ot select:focus{border-color:var(--accent);outline:no
 table.ot .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 table.ot .del{font:inherit;border:0;background:none;color:var(--muted);cursor:pointer;padding:4px 8px;border-radius:6px}
 table.ot .del:hover{color:var(--now)}
+table.ot td.rm{display:flex;align-items:center;gap:6px;min-width:12em}
+.pick{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--line);background:var(--bg);cursor:pointer;touch-action:none;position:relative}
+.pick:hover{border-color:var(--accent)}
+.pick:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pick[aria-checked="true"]{background:var(--accent);border-color:var(--accent)}
+.pick[aria-checked="true"]::after{content:"";position:absolute;left:6px;top:2px;width:5px;height:10px;border:solid var(--accent-ink);border-width:0 2px 2px 0;transform:rotate(45deg)}
+table.ot tr.sel td{background:var(--mine)}
+.bulk{position:sticky;top:env(safe-area-inset-top,0px);z-index:6;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--panel);border:1.5px solid var(--accent);border-radius:12px;padding:10px 12px;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.bulk .bcount{font-weight:700;min-width:5.5em}
+.bulk.idle{border-color:var(--line);box-shadow:none;position:static}
+.bulk.idle .bcount{color:var(--muted);font-weight:400}
+.bulk input{font:inherit;font-size:.9rem;flex:1 1 12em;min-width:0;border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--bg);color:var(--ink)}
 table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
 .detail{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:8px}
 .shift{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:baseline}
@@ -182,6 +194,15 @@ table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
       <div class="idgrid" id="idGrid"></div>
     </details>
     <div class="otsum" id="otSum"></div>
+    <div class="bulk" id="otBulk">
+      <span class="bcount" id="otBulkCount">已選 0 筆</span>
+      <input id="otBulkText" list="otRemarks" placeholder="新的備註，例：帶勤" autocomplete="off">
+      <datalist id="otRemarks"></datalist>
+      <button class="btn primary" id="otBulkApply" type="button">套用到已選</button>
+      <button class="btn" id="otSelAll" type="button">全選</button>
+      <button class="btn" id="otSelNone" type="button">取消選取</button>
+    </div>
+    <p class="sub" id="otSelHint">備註可多選：電腦按住 Shift 點選整段、Ctrl／⌘ 點選加選；手機按住備註左邊的圓鈕上下拖拉。</p>
     <div class="tablewrap"><table class="ot" id="otTable">
       <thead><tr><th>人員編號</th><th>姓名</th><th>類別</th><th>加班日期</th><th>開始時間</th><th>時數</th><th>備註</th><th></th></tr></thead>
       <tbody id="otBody"></tbody>
@@ -624,6 +645,7 @@ const hhmm = t => { const d = new Date(t); return pad(d.getHours()) + pad(d.getM
 let otIds = readJSON('duty-ids', {});
 let otEdits = readJSON('duty-ot-v1', {});
 let otMonth = null;
+let otSel = new Set(), otAnchor = null;
 // 一個班 → 加班紀錄
 function otForShift(s){
   const out = [];
@@ -677,16 +699,19 @@ function renderOT(all, ps){
   const tot = {}; for (const r of rows) tot[r.name] = (tot[r.name]||0) + (parseFloat(r.hours)||0);
   $('otSum').innerHTML = Object.entries(tot).map(([n,h]) => { const p = ps.find(x=>x.name===n); return `<span class="pill" style="--c:${p?color(p.code):'var(--pX)'}"><span class="tag"><i></i>${esc(n)}</span><b>${h}</b><span class="muted">小時・${rows.filter(r=>r.name===n).length} 筆</span></span>`; }).join('');
   const opt = v => OT_CATS.map(c => `<option${c===v?' selected':''}>${c}</option>`).join('') + (OT_CATS.includes(v) ? '' : `<option selected>${esc(v)}</option>`);
-  $('otBody').innerHTML = rows.length ? rows.map((r,i) => `<tr data-i="${i}">
+  otSel = new Set([...otSel].filter(i => i < rows.length));
+  $('otBody').innerHTML = rows.length ? rows.map((r,i) => `<tr data-i="${i}"${otSel.has(i)?' class="sel"':''}>
     <td><input class="mono" data-k="id" value="${esc(r.id)}" style="width:6.5em"></td>
     <td><input data-k="name" value="${esc(r.name)}" style="width:5.5em"></td>
     <td><select data-k="cat">${opt(r.cat)}</select></td>
     <td><input class="mono" data-k="date" value="${esc(r.date)}" style="width:7.5em" inputmode="numeric"></td>
     <td><input class="mono" data-k="time" value="${esc(r.time)}" style="width:4.5em" inputmode="numeric"></td>
     <td><input class="mono" data-k="hours" value="${esc(r.hours)}" style="width:3.5em" inputmode="decimal"></td>
-    <td><input data-k="remark" value="${esc(r.remark)}"></td>
+    <td class="rm"><span class="pick" role="checkbox" tabindex="0" aria-checked="${otSel.has(i)}" aria-label="選取第 ${i+1} 筆備註" data-pick="${i}"></span><input data-k="remark" value="${esc(r.remark)}" list="otRemarks"></td>
     <td><button class="del" type="button" aria-label="刪除這筆" data-del="${i}">✕</button></td></tr>`).join('')
     : `<tr><td colspan="8" class="empty">這個月沒有算出加班。可按「＋ 新增一筆」手動加入。</td></tr>`;
+  $('otRemarks').innerHTML = [...new Set([OT_REMARK, '帶勤', '業務整理', '值星', '機動待命', ...rows.map(r => r.remark).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('');
+  renderBulk();
   const missing = rows.some(r => !r.id);
   $('otNote').textContent = (otEdits[otMonth] ? '這個月已手動修改；按「依班表重新計算」可還原。' : '依班表自動計算。') + (missing ? ' 有幾筆沒有人員編號，請在上方「人員編號」填寫。' : '');
 }
@@ -733,7 +758,90 @@ function showTab(t){
 }
 $('tabDuty').onclick = () => showTab('duty');
 $('tabOT').onclick = () => showTab('ot');
-$('otMonth').onchange = e => { otMonth = e.target.value; renderOT(); };
+$('otMonth').onchange = e => { otMonth = e.target.value; otSel.clear(); renderOT(); };
+// ---- 備註多選 ----
+function renderBulk(){
+  const n = otSel.size;
+  $('otBulk').classList.toggle('idle', n === 0);
+  $('otBulkCount').textContent = n ? `已選 ${n} 筆` : '尚未選取';
+  $('otBulkApply').disabled = n === 0; $('otSelNone').disabled = n === 0;
+  for (const tr of $('otBody').querySelectorAll('tr[data-i]')) {
+    const on = otSel.has(+tr.dataset.i); tr.classList.toggle('sel', on);
+    const pk = tr.querySelector('.pick'); if (pk) pk.setAttribute('aria-checked', String(on));
+  }
+}
+function selRange(a, b, base){
+  const next = new Set(base || []); const [lo, hi] = a < b ? [a, b] : [b, a];
+  for (let i = lo; i <= hi; i++) next.add(i);
+  otSel = next; renderBulk();
+}
+function selClick(i, e){
+  if (e.shiftKey && otAnchor !== null) { selRange(otAnchor, i, e.ctrlKey || e.metaKey ? otSel : null); return; }
+  if (otSel.has(i)) otSel.delete(i); else otSel.add(i);
+  otAnchor = i; renderBulk();
+}
+// 圓鈕：點選、Shift 範圍、按住拖拉（滑鼠或手指）
+let drag = null;
+$('otBody').addEventListener('pointerdown', e => {
+  const pk = e.target.closest('[data-pick]');
+  if (pk) {
+    e.preventDefault();
+    const i = +pk.dataset.pick;
+    if (e.shiftKey || e.ctrlKey || e.metaKey) { selClick(i, e); return; }
+    const adding = !otSel.has(i);
+    drag = {start: i, base: new Set(otSel), adding, moved: false, id: e.pointerId};
+    try { pk.setPointerCapture(e.pointerId); } catch {}
+    return;
+  }
+  // Shift／Ctrl 點備註格本身也能選
+  const inp = e.target.closest('input[data-k="remark"]');
+  if (inp && (e.shiftKey || e.ctrlKey || e.metaKey)) { e.preventDefault(); selClick(+inp.closest('tr').dataset.i, e); }
+});
+function dragTo(x, y){
+  const el = document.elementFromPoint(x, y);
+  const tr = el && el.closest('#otBody tr[data-i]'); if (!tr) return;
+  const j = +tr.dataset.i; if (j === drag.start && !drag.moved) return;
+  drag.moved = true;
+  const [lo, hi] = drag.start < j ? [drag.start, j] : [j, drag.start];
+  const next = new Set(drag.base);
+  for (let k = lo; k <= hi; k++) drag.adding ? next.add(k) : next.delete(k);
+  otSel = next; renderBulk();
+}
+let scrollTimer = null;
+function autoScroll(y){
+  clearInterval(scrollTimer); scrollTimer = null;
+  const edge = 70, h = window.innerHeight;
+  const dir = y > h - edge ? 1 : y < edge ? -1 : 0;
+  if (!dir) return;
+  scrollTimer = setInterval(() => { if (!drag) { clearInterval(scrollTimer); return; } window.scrollBy(0, dir * 14); dragTo(drag.x, drag.y); }, 30);
+}
+$('otBody').addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  drag.x = e.clientX; drag.y = e.clientY; autoScroll(e.clientY);
+  dragTo(e.clientX, e.clientY);
+});
+const endDrag = e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  clearInterval(scrollTimer); scrollTimer = null;
+  if (!drag.moved) { drag.adding ? otSel.add(drag.start) : otSel.delete(drag.start); renderBulk(); }
+  otAnchor = drag.start; drag = null;
+};
+$('otBody').addEventListener('pointerup', endDrag);
+$('otBody').addEventListener('pointercancel', endDrag);
+$('otBody').addEventListener('keydown', e => {
+  const pk = e.target.closest('[data-pick]');
+  if (pk && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); selClick(+pk.dataset.pick, e); }
+});
+$('otBulkApply').onclick = () => {
+  const v = $('otBulkText').value.trim();
+  if (!otSel.size) return;
+  if (!v) { toast('請先輸入要套用的備註'); $('otBulkText').focus(); return; }
+  const rows = otRows().map((r, i) => otSel.has(i) ? {...r, remark: v} : {...r});
+  const n = otSel.size; otSave(rows); otSel.clear(); $('otBulkText').value = ''; renderOT(); toast(`已修改 ${n} 筆備註`);
+};
+$('otBulkText').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('otBulkApply').click(); } });
+$('otSelAll').onclick = () => { otSel = new Set(otRows().map((_, i) => i)); renderBulk(); };
+$('otSelNone').onclick = () => { otSel.clear(); otAnchor = null; renderBulk(); };
 $('idGrid').addEventListener('change', e => {
   const inp = e.target.closest('input'); if (!inp) return;
   otIds[inp.dataset.name] = inp.value.trim().toUpperCase(); writeJSON('duty-ids', otIds);
@@ -749,7 +857,7 @@ $('otBody').addEventListener('change', e => {
 });
 $('otBody').addEventListener('click', e => {
   const b = e.target.closest('[data-del]'); if (!b) return;
-  const rows = otRows().filter((_, i) => i !== +b.dataset.del); otSave(rows); renderOT(); toast('已刪除一筆');
+  const rows = otRows().filter((_, i) => i !== +b.dataset.del); otSel.clear(); otSave(rows); renderOT(); toast('已刪除一筆');
 });
 $('otAdd').onclick = () => {
   const rows = otRows().map(r => ({...r})); const last = rows.at(-1);
@@ -757,7 +865,7 @@ $('otAdd').onclick = () => {
   rows.push({id: last?.id || otIds[p.name] || '', name: last?.name || p.name, cat:'平時加班', date: otMonth + '/01', time:'1800', hours:'3', remark: OT_REMARK});
   otSave(rows); renderOT();
 };
-$('otReset').onclick = () => { delete otEdits[otMonth]; writeJSON('duty-ot-v1', otEdits); renderOT(); toast('已依班表重新計算'); };
+$('otReset').onclick = () => { otSel.clear(); delete otEdits[otMonth]; writeJSON('duty-ot-v1', otEdits); renderOT(); toast('已依班表重新計算'); };
 $('otExport').onclick = otExport;
 try { if (localStorage.getItem('duty-tab') === 'ot') showTab('ot'); } catch {}
 
