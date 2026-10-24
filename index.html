@@ -912,7 +912,8 @@ $('otBulkApply').onclick = () => {
   const rows = otBase().map((r, b) => pick.has(b) ? {...r, remark: v} : r);
   const n = otSel.size; otSave(rows); otSel.clear(); $('otBulkText').value = ''; renderOT(); toast(`已修改 ${n} 筆備註`);
 };
-$('otBulkText').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('otBulkApply').click(); } });
+// 按 Enter 不會自動套用（中文輸入法選字會用到 Enter），要按「套用到已選」才會修改
+$('otBulkText').addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
 $('otSelAll').onclick = () => { otSel = new Set(otRows().map((_, i) => i)); renderBulk(); };
 $('otSelNone').onclick = () => { otSel.clear(); otAnchor = null; renderBulk(); };
 // 人員編號：每打一個字就存起來並即時更新下方資料
