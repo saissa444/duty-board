@@ -281,40 +281,60 @@ table.ot tr td{transition:background-color .2s var(--ease)}
 <div class="toast" id="toast" hidden></div>
 <script>
 // Parses a 勤務分配表 PDF (as text items) into shifts. Pure function, no DOM.
+// 欄位位置依每頁表頭（值星、帶勤、業務整理…）來找，不受紙張大小（A4、B4…）影響。
 function parseDutyPages(pages) {
-  const COLS = [[140,185,'值星'],[185,230,'帶勤'],[230,320,'業務整理'],[320,410,'指定處所待命'],
-                [410,458,'基本教練(公差)'],[458,505,'機動待命'],[505,552,'常訓']];
+  const DUTIES = [['值', '值星'], ['帶', '帶勤'], ['業務', '業務整理'], ['指定', '指定處所待命'],
+                  ['基本', '基本教練(公差)'], ['機動', '機動待命'], ['常訓', '常訓']];
   const pad = n => String(n).padStart(2,'0');
   const key = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`;
   const hours = {}; const names = {}; const days = [];
   for (const items of pages) {
-    const all = items.map(i => i.str).join('');
+    const all = items.map(i => i.str).join('').normalize('NFKC');
     if (!all.includes('勤務分配表')) continue;
-    const m = all.match(/(\d{3})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+    const m = all.match(/(\d{3})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})/);   // 有些頁面少打「日」
     if (!m) continue;
     const base = new Date(+m[1]+1911, +m[2]-1, +m[3], 8);
+    const its = items.filter(i => i.str.trim()).map(i => ({s:i.str.normalize('NFKC').trim(), x:i.x, w:i.w, h:i.h, xc:i.x+i.w/2, yc:i.y+i.h/2}));
+    // 時段列（08-09 … 隔日 08-09）
+    const labels = its.filter(i => /^\d\d-\d\d$/.test(i.s));
+    const labelX = Math.min(...labels.map(i => i.x));
+    const rows = labels.filter(i => i.x < labelX + 5).sort((a,b)=>b.yc-a.yc);
+    if (rows.length !== 25) throw new Error(`${m[2]}/${m[3]} 找到 ${rows.length} 個時段列（預期 25）`);
+    const rowRight = Math.max(...rows.map(i => i.x + i.w));
+    const headTop = rows[0].yc;
+    // 表頭位置
+    const head = re => its.filter(i => re.test(i.s) && i.yc > headTop && i.x > rowRight - 2).sort((a,b) => a.x - b.x);
+    const codeHead = head(/^代號$/).at(-1);
+    const cols = DUTIES.map(([k, name]) => { const h = head(new RegExp('^' + k))[0]; return h ? {name, c: h.xc} : null; }).filter(Boolean);
+    if (cols.length < 5 || !codeHead) throw new Error(`${m[2]}/${m[3]} 找不到表頭（值星、帶勤…），格式可能不同`);
+    cols.sort((a,b) => a.c - b.c);
+    const tableRight = codeHead.x - 2;   // 右邊是姓名對照表與差假狀況，不算勤務
+    const bounds = cols.map((col, i) => [i ? (cols[i-1].c + col.c)/2 : rowRight, i < cols.length-1 ? (col.c + cols[i+1].c)/2 : tableRight]);
+    // 姓名代碼對照表
     days.push(`${base.getFullYear()}-${pad(base.getMonth()+1)}-${pad(base.getDate())}`);
-    const its = items.filter(i => i.str.trim()).map(i => ({s:i.str.trim(), x:i.x, xc:i.x+i.w/2, yc:i.y+i.h/2}));
+    const nameHead = head(/^姓/)[0], roleHead = head(/^職/)[0];
+    const codeL = codeHead.x - codeHead.w, codeR = codeHead.x + codeHead.w * 2;
+    const nameX = nameHead ? nameHead.x - nameHead.w * 1.5 : codeHead.x + (codeHead.w * 4);
     for (const c of its) {
-      if (c.x > 560 && c.x < 590 && /^[A-Z0-9]$/.test(c.s)) {
-        const near = its.filter(v => Math.abs(v.yc-c.yc) < 5 && v.x > 595).sort((a,b)=>a.x-b.x);
-        const nm = near.filter(v => v.x >= 690).map(v=>v.s).join('');
-        const role = near.filter(v => v.x < 690).map(v=>v.s).join('');
-        if (nm) names[c.s] = {name:nm, role};
-      }
+      if (c.yc >= codeHead.yc || c.x < codeL || c.x > codeR || !/^[A-Z0-9]$/.test(c.s)) continue;
+      const near = its.filter(v => Math.abs(v.yc - c.yc) < c.h * 0.4 && v.x > c.x + c.w).sort((a,b)=>a.x-b.x);
+      const nm = near.filter(v => v.x >= nameX).map(v=>v.s).join('');
+      const role = near.filter(v => v.x < nameX).map(v=>v.s).join('');
+      if (nm && !/差假|輪休|補休|休假|公假|合計/.test(nm + role)) names[c.s] = {name:nm, role};
     }
-    const rows = its.filter(i => /^\d\d-\d\d$/.test(i.s) && i.x < 130).sort((a,b)=>b.yc-a.yc);
-    if (rows.length !== 25) throw new Error(`${days.at(-1)} 找到 ${rows.length} 個時段列（預期 25）`);
+    void roleHead;
+    const rowGap = Math.abs(rows[0].yc - rows[1].yc);
     rows.forEach((r, idx) => {
       const start = new Date(base.getTime() + idx*3600e3);
       for (const w of its) {
-        if (Math.abs(w.yc - r.yc) < 8 && w.x > 130 && w.x < 552) {
-          const col = COLS.find(([a,b]) => w.xc >= a && w.xc < b);
-          if (!col) continue;
-          for (const code of w.s.split(/[.．、,]/).map(s=>s.trim()).filter(Boolean)) {
-            const h = ((hours[code] ||= {})[start.getTime()] ||= []);
-            if (!h.includes(col[2])) h.push(col[2]);
-          }
+        if (Math.abs(w.yc - r.yc) >= rowGap * 0.45 || w.xc <= rowRight || w.xc >= tableRight) continue;
+        const ci = bounds.findIndex(([a,b]) => w.xc >= a && w.xc < b);
+        if (ci < 0) continue;
+        for (const code of w.s.split(/[.．、,，]/).map(s=>s.trim()).filter(Boolean)) {
+          const pure = code.replace(/\(.*\)$/, '');   // 例如 2(08-14)：括號是備註，只取代號
+          if (!/^[A-Z0-9]$/.test(pure)) continue;
+          const h = ((hours[pure] ||= {})[start.getTime()] ||= []);
+          if (!h.includes(cols[ci].name)) h.push(cols[ci].name);
         }
       }
     });
