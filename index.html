@@ -121,6 +121,10 @@ table.ot tr.sel td{background:var(--mine)}
 .bulk.idle{border-color:var(--line);box-shadow:none;position:static}
 .bulk.idle .bcount{color:var(--muted);font-weight:400}
 .bulk input{font:inherit;font-size:.9rem;flex:1 1 12em;min-width:0;border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--bg);color:var(--ink)}
+button.th{font:inherit;font-size:.75rem;letter-spacing:.06em;color:var(--muted);background:none;border:0;padding:0;cursor:pointer;white-space:nowrap}
+button.th:hover{color:var(--ink)}
+button.th.on{color:var(--ink);font-weight:700}
+button.th.on::after{content:" ▲";font-size:.7em}
 table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
 .detail{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:8px}
 .shift{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:baseline}
@@ -182,7 +186,12 @@ table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
 
   <div id="viewOT" class="view" hidden>
     <div class="otbar">
-      <label class="row"><span class="label">月份</span><select id="otMonth" class="sel"></select></label>
+      <div class="row">
+        <label class="row"><span class="label">月份</span><select id="otMonth" class="sel"></select></label>
+        <label class="row"><span class="label">排序</span><select id="otSort" class="sel">
+          <option value="id">依人員編號</option><option value="name">依姓名</option><option value="date">依日期</option>
+        </select></label>
+      </div>
       <div class="row">
         <button class="btn" id="otAdd" type="button">＋ 新增一筆</button>
         <button class="btn" id="otReset" type="button">依班表重新計算</button>
@@ -204,7 +213,7 @@ table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
     </div>
     <p class="sub" id="otSelHint">備註可多選：電腦按住 Shift 點選整段、Ctrl／⌘ 點選加選；手機按住備註左邊的圓鈕上下拖拉。</p>
     <div class="tablewrap"><table class="ot" id="otTable">
-      <thead><tr><th>人員編號</th><th>姓名</th><th>類別</th><th>加班日期</th><th>開始時間</th><th>時數</th><th>備註</th><th></th></tr></thead>
+      <thead><tr><th><button class="th" type="button" data-sort="id">人員編號</button></th><th><button class="th" type="button" data-sort="name">姓名</button></th><th>類別</th><th><button class="th" type="button" data-sort="date">加班日期</button></th><th>開始時間</th><th>時數</th><th>備註</th><th></th></tr></thead>
       <tbody id="otBody"></tbody>
     </table></div>
     <p class="sub" id="otNote"></p>
@@ -704,8 +713,19 @@ function otRows(all, ps){
   const has = n => Object.prototype.hasOwnProperty.call(otIds, n);
   const known = new Set((ps || people()).map(p => p.name));
   return otBase(all, ps).map((r, b) => ({...r, id: has(r.name) ? (otIds[r.name] || '') : r.id, _b: b}))
-    .filter(r => (has(r.name) || known.has(r.name)) ? !!(otIds[r.name] || '').trim() : true);
+    .filter(r => (has(r.name) || known.has(r.name)) ? !!(otIds[r.name] || '').trim() : true)
+    .sort(otSorter());
 }
+// 排序：人員編號／姓名／日期（同一人再依日期、時間）
+let otSort = 'id'; try { otSort = localStorage.getItem('duty-ot-sort') || 'id'; } catch {}
+function otSorter(){
+  const cmp = (a, b) => String(a).localeCompare(String(b), 'zh-Hant', {numeric: true});
+  const when = (a, b) => cmp(a.date + a.time, b.date + b.time);
+  if (otSort === 'name') return (a, b) => cmp(a.name, b.name) || when(a, b) || a._b - b._b;
+  if (otSort === 'date') return (a, b) => when(a, b) || cmp(a.id, b.id) || a._b - b._b;
+  return (a, b) => (!a.id - !b.id) || cmp(a.id, b.id) || cmp(a.name, b.name) || when(a, b) || a._b - b._b;
+}
+function setSort(v){ otSort = v; try { localStorage.setItem('duty-ot-sort', v); } catch {} otSel.clear(); renderOTTable(); }
 function otSave(rows){ otEdits[otMonth] = rows.map(({_b, ...r}) => r); writeJSON('duty-ot-v1', otEdits); }
 function renderOT(all, ps){
   all = all || shifts(); ps = ps || people();
@@ -723,6 +743,8 @@ function renderOT(all, ps){
 }
 function renderOTTable(all, ps){
   all = all || shifts(); ps = ps || people();
+  $('otSort').value = otSort;
+  for (const th of document.querySelectorAll('button.th')) th.classList.toggle('on', th.dataset.sort === otSort);
   const rows = otRows(all, ps);
   // 合計
   const tot = {}; for (const r of rows) tot[r.name] = (tot[r.name]||0) + (parseFloat(r.hours)||0);
@@ -787,6 +809,8 @@ function showTab(t){
 }
 $('tabDuty').onclick = () => showTab('duty');
 $('tabOT').onclick = () => showTab('ot');
+$('otSort').onchange = e => setSort(e.target.value);
+document.querySelector('#otTable thead').addEventListener('click', e => { const t = e.target.closest('[data-sort]'); if (t) setSort(t.dataset.sort); });
 $('otMonth').onchange = e => { otMonth = e.target.value; otSel.clear(); renderOT(); };
 // ---- 備註多選 ----
 function renderBulk(){
