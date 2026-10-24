@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <title>在班表</title>
 <meta name="theme-color" content="#ECE9E4" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#232527" media="(prefers-color-scheme: dark)">
@@ -34,6 +34,8 @@
   --accent:#9FB3A6; --accent-ink:#1E2321; --accent-soft:#34403A; --mine:rgba(159,179,166,.14); --now:#D98C7F;
   --shadow:0 1px 2px rgba(0,0,0,.25), 0 10px 24px -16px rgba(0,0,0,.6); color-scheme:dark}
 *{box-sizing:border-box}
+/* 手機：連點按鈕（例如切換週次）不會觸發「點兩下放大」 */
+html,body,button,.chip,.day,select,input{touch-action:manipulation}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
 .wrap{max-width:980px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px;display:flex;flex-direction:column;gap:16px}
