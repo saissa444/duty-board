@@ -295,6 +295,7 @@ table.ot tr td{transition:background-color .2s var(--ease)}
       <tbody id="otBody"></tbody>
     </table></div>
     <p class="sub" id="otNote"></p>
+    <details class="bkdiff" id="otDiffList" hidden></details>
     <p class="sub">計算方式：白天班前 9 小時為正常上班，超過的部分算加班（例：10:00–22:00 → 19:00 起 3 小時）。21:00 後起班跨夜者，隔日 06:00–09:00 算加班 3 小時；若 09:00 後繼續上班，超過 9 小時的部分也算。週六、週日標為「假日加班」，國定假日請手動改類別。</p>
   </div>
 
@@ -927,7 +928,12 @@ function renderOTTable(all, ps){
   $('otRemarks').innerHTML = [...new Set([OT_REMARK, '帶勤', '業務整理', '值星', '機動待命', ...rows.map(r => r.remark).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('');
   renderBulk();
   const missing = rows.some(r => !r.id);
-  const nEd = otEdits[otMonth] ? otDiffs({[otMonth]: otEdits[otMonth]}, allWeeks(), otIds).length : 0;
+  const edList = otEdits[otMonth] ? otDiffs({[otMonth]: otEdits[otMonth]}, allWeeks(), otIds) : [];
+  const nEd = edList.length;
+  const dl = $('otDiffList'), wasOpen = dl.open;   // 重畫時保留展開狀態
+  dl.hidden = !nEd;
+  dl.innerHTML = nEd ? `<summary>查看 ${nEd} 筆修改</summary><ul>${edList.map(d => `<li><b>${esc(d.who)}</b>　${esc(d.text)}</li>`).join('')}</ul>` : '';
+  dl.open = wasOpen && !!nEd;
   $('otNote').textContent = (otEdits[otMonth] ? (nEd ? `這個月有 ${nEd} 筆手動修改；按「依班表重新計算」可還原。` : '這個月已手動修改過；按「依班表重新計算」可還原。') : '依班表自動計算。') + (missing ? ' 有幾筆沒有人員編號，請在上方「人員編號」填寫。' : '');
 }
 function otValidate(rows){
