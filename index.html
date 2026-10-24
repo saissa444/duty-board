@@ -143,6 +143,14 @@ table.ot select[data-k="cat"]{min-width:7.6em;padding-right:22px}
 table.ot th:nth-child(2),table.ot td:nth-child(2){position:sticky;left:0;z-index:2;background:var(--panel);box-shadow:6px 0 8px -6px rgba(69,66,63,.35)}
 table.ot tr.sel td:nth-child(2){background:linear-gradient(var(--mine),var(--mine)),var(--panel)}
 table.ot td:nth-child(2) input{font-weight:700;color:var(--ink)}
+.bkcard{background:var(--panel);border-radius:16px;box-shadow:var(--shadow);padding:16px;display:flex;flex-direction:column;gap:10px}
+.bkcard h2{margin:0;font-size:1rem;font-weight:700;letter-spacing:.04em}
+.bkstats{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.bkstats div{background:var(--bg);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.bkstats b{font-family:var(--mono);font-size:1.25rem;font-variant-numeric:tabular-nums}
+.bkstats span{font-size:.8rem;color:var(--muted)}
+.bkconfirm{border:1.5px solid var(--accent);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;font-size:.9rem}
+.bkconfirm ul{margin:0;padding-left:1.2em;color:var(--muted)}
 table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
 .detail{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:8px}
 .shift{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:baseline}
@@ -223,6 +231,7 @@ table.ot tr td{transition:background-color .2s var(--ease)}
   <nav class="tabs" role="tablist">
     <button class="tab" id="tabDuty" role="tab" type="button" aria-selected="true">在班表</button>
     <button class="tab" id="tabOT" role="tab" type="button" aria-selected="false">加班時數</button>
+    <button class="tab" id="tabBk" role="tab" type="button" aria-selected="false">備份</button>
   </nav>
 
   <div id="viewDuty" class="view">
@@ -284,6 +293,25 @@ table.ot tr td{transition:background-color .2s var(--ease)}
     </table></div>
     <p class="sub" id="otNote"></p>
     <p class="sub">計算方式：白天班前 9 小時為正常上班，超過的部分算加班（例：10:00–22:00 → 19:00 起 3 小時）。21:00 後起班跨夜者，隔日 06:00–09:00 算加班 3 小時；若 09:00 後繼續上班，超過 9 小時的部分也算。週六、週日標為「假日加班」，國定假日請手動改類別。</p>
+  </div>
+
+  <div id="viewBk" class="view" hidden>
+    <section class="bkcard">
+      <h2>這台裝置目前的資料</h2>
+      <div class="bkstats" id="bkStats"></div>
+    </section>
+    <section class="bkcard">
+      <h2>匯出備份</h2>
+      <p class="sub">把班表、人員編號、勾選、加班時數的修改、「我是誰」與提醒設定，全部存成一個 .json 檔。換電腦或換手機時，在新裝置匯入這個檔就能接著用。</p>
+      <div class="row"><button class="btn primary" id="bkExport" type="button">匯出備份 .json</button></div>
+    </section>
+    <section class="bkcard">
+      <h2>匯入備份</h2>
+      <p class="sub">選擇之前匯出的 .json 檔。匯入前會先顯示檔案內容，確認後才會寫入。</p>
+      <input type="file" id="bkInput" accept="application/json,.json" hidden>
+      <div class="row"><button class="btn" id="bkPick" type="button">選擇備份檔…</button></div>
+      <div class="bkconfirm" id="bkConfirm" hidden></div>
+    </section>
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>
@@ -902,16 +930,18 @@ async function otExport(){
   toast(`已匯出 ${name}`);
 }
 // 事件
+const TABS = {duty:['tabDuty','viewDuty'], ot:['tabOT','viewOT'], bk:['tabBk','viewBk']};
 function showTab(t){
-  const ot = t === 'ot';
-  $('viewDuty').hidden = ot; $('viewOT').hidden = !ot;
-  const v = ot ? $('viewOT') : $('viewDuty'); v.classList.remove('enter'); void v.offsetWidth; v.classList.add('enter');
-  $('tabDuty').setAttribute('aria-selected', String(!ot)); $('tabOT').setAttribute('aria-selected', String(ot));
+  if (!TABS[t]) t = 'duty';
+  for (const [k,[tab,view]] of Object.entries(TABS)) { $(view).hidden = k !== t; $(tab).setAttribute('aria-selected', String(k === t)); }
+  const v = $(TABS[t][1]); v.classList.remove('enter'); void v.offsetWidth; v.classList.add('enter');
   try { localStorage.setItem('duty-tab', t); } catch {}
-  if (ot) renderOT();
+  if (t === 'ot') renderOT();
+  if (t === 'bk') renderBackup();
 }
 $('tabDuty').onclick = () => showTab('duty');
 $('tabOT').onclick = () => showTab('ot');
+$('tabBk').onclick = () => showTab('bk');
 $('otSort').onchange = e => setSort(e.target.value);
 document.querySelector('#otTable thead').addEventListener('click', e => { const t = e.target.closest('[data-sort]'); if (t) setSort(t.dataset.sort); });
 $('otMonth').onchange = e => { otMonth = e.target.value; otSel.clear(); renderOT(); };
@@ -1048,7 +1078,76 @@ $('otBody').addEventListener('click', e => {
 });
 $('otReset').onclick = () => { otSel.clear(); delete otEdits[otMonth]; writeJSON('duty-ot-v1', otEdits); renderOT(); toast('已依班表重新計算'); };
 $('otExport').onclick = otExport;
-try { if (localStorage.getItem('duty-tab') === 'ot') showTab('ot'); } catch {}
+
+// ================= 備份（匯出／匯入 .json） =================
+const BK_KEYS = ['duty-weeks-v1','duty-hidden-v1','duty-me','duty-watch','duty-ids','duty-ids-last','duty-ids-inc','duty-ot-v1'];
+function bkSnapshot(){
+  const data = {};
+  for (const k of BK_KEYS) { try { const v = localStorage.getItem(k); if (v !== null) data[k] = v; } catch {} }
+  return data;
+}
+function bkSummary(data){
+  const j = k => { try { return JSON.parse(data[k]); } catch { return null; } };
+  const wk = j('duty-weeks-v1') || {}, ids = j('duty-ids') || {}, ot = j('duty-ot-v1') || {};
+  const days = Object.values(wk).flatMap(w => [w.firstDay, w.lastDay]).filter(Boolean).sort();
+  return { weeks: Object.keys(wk).length, range: days.length ? `${days[0].slice(5).replace('-','/')} – ${days.at(-1).slice(5).replace('-','/')}` : '—',
+           ids: Object.values(ids).filter(v => (v||'').trim()).length, months: Object.keys(ot).length };
+}
+function renderBackup(){
+  const sm = bkSummary(bkSnapshot());
+  $('bkStats').innerHTML = [[sm.weeks, '週班表'], [sm.range, '班表範圍'], [sm.ids, '位已填人員編號'], [sm.months, '個月份有手動修改']]
+    .map(([v,l]) => `<div><b>${esc(String(v))}</b><span>${l}</span></div>`).join('');
+}
+async function saveFile(blob, name){
+  const file = new File([blob], name, {type: blob.type});
+  try {
+    if (navigator.canShare && navigator.canShare({files:[file]}) && /iPhone|iPad|Android/i.test(navigator.userAgent)) { await navigator.share({files:[file], title:name}); return true; }
+  } catch (e) { if (e && e.name === 'AbortError') return false; }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000); return true;
+}
+$('bkExport').onclick = async () => {
+  const d = new Date(); const stamp = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+  const body = {app: 'duty-board', version: 1, exportedAt: d.toISOString(), data: bkSnapshot()};
+  const name = `duty-backup_${stamp}.json`;
+  if (await saveFile(new Blob([JSON.stringify(body, null, 1)], {type:'application/json'}), name)) toast(`已匯出 ${name}`);
+};
+$('bkPick').onclick = () => $('bkInput').click();
+$('bkInput').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  let body;
+  try { body = JSON.parse(await f.text()); } catch { toast('這個檔案不是正確的 .json 備份檔'); return; }
+  if (!body || body.app !== 'duty-board' || typeof body.data !== 'object') { toast('這不是「在班表」的備份檔'); return; }
+  const data = Object.fromEntries(Object.entries(body.data).filter(([k,v]) => BK_KEYS.includes(k) && typeof v === 'string'));
+  const sm = bkSummary(data);
+  const box = $('bkConfirm'); box.hidden = false;
+  box.innerHTML = `<div><b>${esc(f.name)}</b><span class="muted">（${body.exportedAt ? esc(new Date(body.exportedAt).toLocaleString('zh-TW')) + ' 匯出' : '匯出時間不明'}）</span></div>
+    <ul><li>${sm.weeks} 週班表（${esc(sm.range)}）</li><li>${sm.ids} 位人員編號</li><li>${sm.months} 個月份的加班修改</li></ul>
+    <div class="row"><button class="btn primary" id="bkReplace" type="button">取代目前資料</button><button class="btn" id="bkMerge" type="button">合併</button><button class="btn" id="bkCancel" type="button">取消</button></div>
+    <p class="sub" style="margin:0">「取代」：這台裝置的資料全部換成備份檔的內容。「合併」：保留這台裝置的資料，再加入備份檔的內容；同一週、同一人、同一個月份以備份檔為準。</p>`;
+  const apply = merge => {
+    try {
+      for (const k of BK_KEYS) {
+        if (!(k in data)) { if (!merge) localStorage.removeItem(k); continue; }
+        if (merge) {
+          let cur = null, inc = null; try { cur = JSON.parse(localStorage.getItem(k)); inc = JSON.parse(data[k]); } catch {}
+          if (cur && inc && typeof cur === 'object' && typeof inc === 'object' && !Array.isArray(inc)) { localStorage.setItem(k, JSON.stringify({...cur, ...inc})); continue; }
+          if (Array.isArray(cur) && Array.isArray(inc)) { localStorage.setItem(k, JSON.stringify([...new Set([...cur, ...inc])])); continue; }
+        }
+        localStorage.setItem(k, data[k]);
+      }
+      localStorage.setItem('duty-tab', 'bk');
+    } catch (err) { toast('寫入失敗：' + (err.message || err)); return; }
+    location.reload();
+  };
+  $('bkReplace').onclick = () => apply(false);
+  $('bkMerge').onclick = () => apply(true);
+  $('bkCancel').onclick = () => { box.hidden = true; box.innerHTML = ''; };
+};
+
+// 回到上次停留的頁籤（放在所有功能載入之後）
+try { const t = localStorage.getItem('duty-tab'); if (t && t !== 'duty') showTab(t); } catch {}
 
 if ('serviceWorker' in navigator && /^https?:/.test(location.protocol)) {
   navigator.serviceWorker.register('sw.js').catch(err => console.warn('離線功能未啟用', err));
