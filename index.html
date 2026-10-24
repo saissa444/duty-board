@@ -92,10 +92,16 @@ h1{font-family:var(--display);font-weight:900;font-size:1.6rem;letter-spacing:.0
 .otbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
 .ids{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
 .ids summary{cursor:pointer;font-weight:700;font-size:.9rem}
-.idgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px}
+.idgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;margin-top:10px}
+.idrow{display:flex;align-items:center;gap:8px;font-size:.85rem;min-width:0}
+.idrow.off .nm2,.idrow.off .idin{opacity:.45}
+.idrow .inc{width:18px;height:18px;flex:none;accent-color:var(--accent)}
+.idrow .nm2{display:flex;align-items:center;gap:6px;white-space:nowrap;min-width:4.2em}
+.idrow .nm2 i{width:10px;height:10px;border-radius:2px;background:var(--c);flex:none}
+.restore{font:inherit;font-size:.78rem;white-space:nowrap;border:1px solid var(--accent);color:var(--accent);background:none;border-radius:6px;padding:3px 8px;cursor:pointer;flex:none}
 .idgrid label{display:flex;align-items:center;gap:6px;font-size:.85rem}
 .idgrid i{width:10px;height:10px;border-radius:2px;background:var(--c);flex:none}
-.idgrid input{text-transform:uppercase;font:inherit;font-family:var(--mono);font-size:.85rem;width:100%;min-width:0;border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:var(--bg);color:var(--ink)}
+.idgrid input.idin{text-transform:uppercase;font:inherit;font-family:var(--mono);font-size:.85rem;width:100%;min-width:0;border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:var(--bg);color:var(--ink)}
 .otsum{display:flex;flex-wrap:wrap;gap:8px}
 .otsum .pill{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 12px;display:flex;align-items:baseline;gap:8px}
 .otsum .pill b{font-family:var(--mono);font-size:1.15rem;font-variant-numeric:tabular-nums}
@@ -198,7 +204,9 @@ table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
       </div>
     </div>
     <details class="ids" id="otIds">
-      <summary>人員編號（只匯出有填編號的人）</summary>
+      <summary>人員編號・要匯出的人</summary>
+      <p class="sub" style="margin:8px 0 0">打勾且有填編號的人才會列在下方並匯出。編號會一直記住；清空後可按「填回」恢復上次的編號。</p>
+      <div class="row" style="margin-top:8px"><button class="btn" id="incAll" type="button">全部勾選</button><button class="btn" id="incNone" type="button">全部取消</button></div>
       <div class="idgrid" id="idGrid"></div>
     </details>
     <div class="otsum" id="otSum"></div>
@@ -669,6 +677,10 @@ const OT_REMARK = '備勤(值星)';
 const ymd = t => { const d = new Date(t); return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`; };
 const hhmm = t => { const d = new Date(t); return pad(d.getHours()) + pad(d.getMinutes()); };
 let otIds = readJSON('duty-ids', {});
+let otLast = readJSON('duty-ids-last', {});   // 每個人最後一次填的編號（清空也記得）
+let otInc = readJSON('duty-ids-inc', {});     // 這次要不要匯出（預設要）
+for (const [n, v] of Object.entries(otIds)) if ((v||'').trim() && !otLast[n]) otLast[n] = v;
+const included = n => otInc[n] !== false;
 let otEdits = readJSON('duty-ot-v1', {});
 let otMonth = null;
 let otSel = new Set(), otAnchor = null;
@@ -712,7 +724,7 @@ function otRows(all, ps){
   const has = n => Object.prototype.hasOwnProperty.call(otIds, n);
   const known = new Set((ps || people()).map(p => p.name));
   return otBase(all, ps).map((r, b) => ({...r, id: has(r.name) ? (otIds[r.name] || '') : r.id, _b: b}))
-    .filter(r => (has(r.name) || known.has(r.name)) ? !!(otIds[r.name] || '').trim() : true)
+    .filter(r => (has(r.name) || known.has(r.name)) ? (!!(otIds[r.name] || '').trim() && included(r.name)) : true)
     .sort(otSorter());
 }
 // 排序：人員編號／姓名／日期（同一人再依日期、時間）
@@ -736,7 +748,14 @@ function renderOT(all, ps){
   }
   sel.innerHTML = (months.length ? months : [otMonth]).map(m => `<option value="${m}"${m===otMonth?' selected':''}>${m.replace('/', ' 年 ')} 月</option>`).join('');
   // 人員編號（正在輸入時不重畫，避免游標跳掉）
-  if (!$('idGrid').contains(document.activeElement)) $('idGrid').innerHTML = ps.map(p => `<label style="--c:${color(p.code)}"><i></i><span style="white-space:nowrap">${esc(p.name)}</span><input id="id-${esc(p.code)}" data-name="${esc(p.name)}" value="${esc(otIds[p.name]||'')}" placeholder="例 A0557" autocomplete="off"></label>`).join('') || '<span class="muted">上傳班表後會列出人員</span>';
+  if (!$('idGrid').contains(document.activeElement)) $('idGrid').innerHTML = ps.map(p => {
+    const v = otIds[p.name] || '', last = otLast[p.name] || '';
+    return `<div class="idrow${included(p.name) ? '' : ' off'}" style="--c:${color(p.code)}" data-name="${esc(p.name)}">
+      <input type="checkbox" class="inc" id="inc-${esc(p.code)}" data-name="${esc(p.name)}" ${included(p.name) ? 'checked' : ''} aria-label="匯出 ${esc(p.name)}">
+      <label for="id-${esc(p.code)}" class="nm2"><i></i>${esc(p.name)}</label>
+      <input class="idin" id="id-${esc(p.code)}" data-name="${esc(p.name)}" value="${esc(v)}" placeholder="${last ? '上次：' + esc(last) : '例 A0557'}" autocomplete="off">
+      <button class="restore" type="button" data-restore="${esc(p.name)}" ${!v && last ? '' : 'hidden'}>填回 ${esc(last)}</button>
+    </div>`; }).join('') || '<span class="muted">上傳班表後會列出人員</span>';
   if (!Object.values(otIds).some(v => (v||'').trim())) $('otIds').open = true;
   renderOTTable(all, ps);
 }
@@ -759,7 +778,7 @@ function renderOTTable(all, ps){
     <td><input class="mono" data-k="hours" value="${esc(r.hours)}" style="width:3.5em" inputmode="decimal"></td>
     <td class="rm"><span class="pick" role="checkbox" tabindex="0" aria-checked="${otSel.has(i)}" aria-label="選取第 ${i+1} 筆備註" data-pick="${i}"></span><input data-k="remark" value="${esc(r.remark)}" list="otRemarks"></td>
     <td><button class="del" type="button" aria-label="刪除這筆" data-del="${i}">✕</button></td></tr>`).join('')
-    : `<tr><td colspan="8" class="empty">${Object.values(otIds).some(v => (v||'').trim()) ? '這個月沒有算出加班。' : '請先在上方「人員編號」填入要彙整的人，例如在自己名字旁填 A0557。'}</td></tr>`;
+    : `<tr><td colspan="8" class="empty">${!people().some(p => (otIds[p.name]||'').trim() && included(p.name)) && people().some(p => (otIds[p.name]||'').trim()) ? '目前沒有勾選要匯出的人，請在上方「人員編號」勾選。' : Object.values(otIds).some(v => (v||'').trim()) ? '這個月沒有算出加班。' : '請先在上方「人員編號」填入要彙整的人，例如在自己名字旁填 A0557。'}</td></tr>`;
   $('otRemarks').innerHTML = [...new Set([OT_REMARK, '帶勤', '業務整理', '值星', '機動待命', ...rows.map(r => r.remark).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('');
   renderBulk();
   const missing = rows.some(r => !r.id);
@@ -896,21 +915,41 @@ $('otBulkText').addEventListener('keydown', e => { if (e.key === 'Enter') { e.pr
 $('otSelAll').onclick = () => { otSel = new Set(otRows().map((_, i) => i)); renderBulk(); };
 $('otSelNone').onclick = () => { otSel.clear(); otAnchor = null; renderBulk(); };
 // 人員編號：每打一個字就存起來並即時更新下方資料
+function syncIdRow(name){
+  const row = [...$('idGrid').querySelectorAll('.idrow')].find(r => r.dataset.name === name); if (!row) return;
+  const v = otIds[name] || '', last = otLast[name] || '';
+  const btn = row.querySelector('.restore'); btn.hidden = !!v || !last; btn.textContent = '填回 ' + last;
+  row.querySelector('.idin').placeholder = last ? '上次：' + last : '例 A0557';
+  row.classList.toggle('off', !included(name));
+}
 $('idGrid').addEventListener('input', e => {
-  const inp = e.target.closest('input'); if (!inp) return;
-  otIds[inp.dataset.name] = inp.value.trim().toUpperCase(); writeJSON('duty-ids', otIds);
-  renderOTTable();
+  const inp = e.target.closest('input.idin'); if (!inp) return;
+  const n = inp.dataset.name, v = inp.value.trim().toUpperCase();
+  otIds[n] = v; writeJSON('duty-ids', otIds);
+  if (v) { otLast[n] = v; writeJSON('duty-ids-last', otLast); }
+  syncIdRow(n); renderOTTable();
 });
 $('idGrid').addEventListener('change', e => {
-  const inp = e.target.closest('input'); if (!inp) return;
-  inp.value = otIds[inp.dataset.name] || '';
+  const cb = e.target.closest('input.inc');
+  if (cb) { otInc[cb.dataset.name] = cb.checked; writeJSON('duty-ids-inc', otInc); otSel.clear(); syncIdRow(cb.dataset.name); renderOTTable(); return; }
+  const inp = e.target.closest('input.idin'); if (inp) inp.value = otIds[inp.dataset.name] || '';
 });
+$('idGrid').addEventListener('click', e => {
+  const b = e.target.closest('[data-restore]'); if (!b) return;
+  const n = b.dataset.restore; otIds[n] = otLast[n] || ''; writeJSON('duty-ids', otIds);
+  const inp = [...$('idGrid').querySelectorAll('input.idin')].find(x => x.dataset.name === n); if (inp) inp.value = otIds[n];
+  syncIdRow(n); renderOTTable();
+});
+$('incAll').onclick = () => { for (const p of people()) otInc[p.name] = true; writeJSON('duty-ids-inc', otInc); otSel.clear(); $('idGrid').innerHTML = ''; renderOT(); };
+$('incNone').onclick = () => { for (const p of people()) otInc[p.name] = false; writeJSON('duty-ids-inc', otInc); otSel.clear(); $('idGrid').innerHTML = ''; renderOT(); };
 $('otBody').addEventListener('change', e => {
   const el = e.target.closest('[data-k]'); if (!el) return;
   const i = +el.closest('tr').dataset.i; const row = otRows()[i]; if (!row) return;
   const v = el.value.trim();
   if (el.dataset.k === 'id') {   // 在表格裡改編號＝改這個人的人員編號
     otIds[row.name] = v.toUpperCase(); writeJSON('duty-ids', otIds);
+    if (otIds[row.name]) { otLast[row.name] = otIds[row.name]; writeJSON('duty-ids-last', otLast); }
+    syncIdRow(row.name);
     const g = [...$('idGrid').querySelectorAll('input')].find(x => x.dataset.name === row.name); if (g) g.value = otIds[row.name];
     renderOTTable(); return;
   }
