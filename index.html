@@ -161,6 +161,18 @@ table.ot td:nth-child(2) input{font-weight:700;color:var(--ink)}
 .sheet .btn{justify-content:center}
 .btn.big{justify-content:center;padding:12px 14px;font-size:1rem}
 @media (prefers-reduced-motion:no-preference){.sheetwrap:not([hidden]) .sheet{animation:rise .3s var(--ease)}.sheetwrap:not([hidden]){animation:fade .2s var(--ease)}}
+.hintrow{display:flex;align-items:center;gap:12px;justify-content:space-between}
+.hintrow .sub{flex:1;min-width:0;margin:0}
+.addbtn{flex:none;font-weight:700;color:var(--accent);border-color:var(--accent)}
+.fab{position:fixed;right:max(16px,calc(env(safe-area-inset-right,0px) + 16px));bottom:calc(22px + env(safe-area-inset-bottom,0px));z-index:15;border:0;border-radius:999px;padding:14px 20px;font:inherit;font-weight:700;font-size:1rem;background:var(--accent);color:var(--accent-ink);box-shadow:0 10px 24px -8px rgba(69,66,63,.55);cursor:pointer;touch-action:manipulation}
+.fab:active{transform:scale(.95)}
+body.fab-on .wrap{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))}
+body.fab-on .toast{bottom:calc(92px + env(safe-area-inset-bottom,0px))}
+@media (max-width:760px),(pointer:coarse){.addbtn{display:none}}
+table.ot tr.active td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+table.ot tr.active td{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+table.ot tr.active td:nth-child(2){background:linear-gradient(color-mix(in srgb,var(--accent) 6%,transparent),color-mix(in srgb,var(--accent) 6%,transparent)),var(--panel)}
+@media (prefers-reduced-motion:no-preference){@keyframes flashrow{from{background:color-mix(in srgb,var(--accent) 28%,var(--panel))}}table.ot tr.flash td{animation:flashrow 1.2s var(--ease)}}
 table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
 .detail{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:8px}
 .shift{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:baseline}
@@ -296,7 +308,10 @@ table.ot tr td{transition:background-color .2s var(--ease)}
       <button class="btn" id="otSelAll" type="button">全選</button>
       <button class="btn" id="otSelNone" type="button">取消選取</button>
     </div>
-    <p class="sub" id="otSelHint">備註可多選：電腦按住 Shift 點選整段、Ctrl／⌘ 點選加選；手機按住備註左邊的圓鈕上下拖拉。</p>
+    <div class="hintrow">
+      <p class="sub" id="otSelHint">備註可多選：電腦按住 Shift 點選整段、Ctrl／⌘ 點選加選；手機按住備註左邊的圓鈕上下拖拉。</p>
+      <button class="btn addbtn" id="otAddInline" type="button" title="複製目前點選的那一列，新增在它下面">＋ 增加</button>
+    </div>
     <div class="tablewrap"><table class="ot" id="otTable">
       <thead><tr><th><button class="th" type="button" data-sort="id">人員編號</button></th><th><button class="th" type="button" data-sort="name">姓名</button></th><th>類別</th><th><button class="th" type="button" data-sort="date">加班日期</button></th><th>開始時間</th><th>時數</th><th>備註</th><th></th></tr></thead>
       <tbody id="otBody"></tbody>
@@ -328,6 +343,7 @@ table.ot tr td{transition:background-color .2s var(--ease)}
 </div>
 <div class="toast" id="toast" hidden></div>
 <div class="sheetwrap" id="saveSheet" hidden></div>
+<button class="fab" id="otAddFab" type="button" hidden aria-label="複製目前點選的那一列，新增一筆">＋ 增加</button>
 <script>
 // Parses a 勤務分配表 PDF (as text items) into shifts. Pure function, no DOM.
 // 欄位位置依每頁表頭（值星、帶勤、業務整理…）來找，不受紙張大小（A4、B4…）影響。
@@ -810,6 +826,7 @@ const included = n => otInc[n] !== false;
 let otEdits = readJSON('duty-ot-v1', {});
 let otMonth = null;
 let otSel = new Set(), otAnchor = null;
+let otActiveB = null, otFlashB = null;   // 目前點選的那一列（以完整資料的位置記）、剛新增的那一列
 // 一個班 → 加班紀錄
 function otForShift(s){
   const out = [];
@@ -858,6 +875,7 @@ function otDiffs(edits, wks, ids){
   for (const month of Object.keys(edits || {}).sort()) {
     const comp = otComputed(month, all, ps), used = new Set();
     for (const e of edits[month] || []) {
+      if (e.added) { out.push({month, who: `${(ids && ids[e.name]) || e.id || ''} ${e.name} ${String(e.date||'').slice(5)}`.trim(), text: `新增 ${e.time} 起 ${e.hours} 小時・${e.cat}・${e.remark || '（無備註）'}`}); continue; }
       let ci = -1;
       if (e.orig) ci = comp.findIndex((c,i) => !used.has(i) && c.name === e.name && OT_F.every(f => c[f] === e.orig[f]));
       if (ci < 0) ci = comp.findIndex((c,i) => !used.has(i) && c.name === e.name && c.date === e.date && c.time === e.time);
@@ -923,7 +941,7 @@ function renderOTTable(all, ps){
   $('otSum').innerHTML = Object.entries(tot).map(([n,h]) => { const p = ps.find(x=>x.name===n); return `<span class="pill" style="--c:${p?color(p.code):'var(--pX)'}"><span class="tag"><i></i>${esc(n)}</span><b>${h}</b><span class="muted">小時・${rows.filter(r=>r.name===n).length} 筆</span></span>`; }).join('');
   const opt = v => OT_CATS.map(c => `<option${c===v?' selected':''}>${c}</option>`).join('') + (OT_CATS.includes(v) ? '' : `<option selected>${esc(v)}</option>`);
   otSel = new Set([...otSel].filter(i => i < rows.length));
-  $('otBody').innerHTML = rows.length ? rows.map((r,i) => `<tr data-i="${i}"${otSel.has(i)?' class="sel"':''}>
+  $('otBody').innerHTML = rows.length ? rows.map((r,i) => `<tr data-i="${i}" class="${otSel.has(i)?'sel':''}${r._b === otActiveB ? ' active' : ''}${r._b === otFlashB ? ' flash' : ''}">
     <td><input class="mono" data-k="id" value="${esc(r.id)}" style="width:6.5em"></td>
     <td><input data-k="name" value="${esc(r.name)}" style="width:5.5em"></td>
     <td><select data-k="cat">${opt(r.cat)}</select></td>
@@ -1009,6 +1027,8 @@ function showTab(t){
   for (const [k,[tab,view]] of Object.entries(TABS)) { $(view).hidden = k !== t; $(tab).setAttribute('aria-selected', String(k === t)); }
   const v = $(TABS[t][1]); v.classList.remove('enter'); void v.offsetWidth; v.classList.add('enter');
   try { localStorage.setItem('duty-tab', t); } catch {}
+  $('otAddFab').hidden = t !== 'ot' || !(matchMedia('(max-width:760px)').matches || matchMedia('(pointer:coarse)').matches);
+  document.body.classList.toggle('fab-on', !$('otAddFab').hidden);
   if (t === 'ot') renderOT();
   if (t === 'bk') renderBackup();
 }
@@ -1017,7 +1037,31 @@ $('tabOT').onclick = () => showTab('ot');
 $('tabBk').onclick = () => showTab('bk');
 $('otSort').onchange = e => setSort(e.target.value);
 document.querySelector('#otTable thead').addEventListener('click', e => { const t = e.target.closest('[data-sort]'); if (t) setSort(t.dataset.sort); });
-$('otMonth').onchange = e => { otMonth = e.target.value; otSel.clear(); renderOT(); };
+$('otMonth').onchange = e => { otMonth = e.target.value; otSel.clear(); otActiveB = null; renderOT(); };
+// ---- 點到某一列（任何一格）就成為「目前這列」；按「＋ 增加」複製它 ----
+function markActive(tr){
+  if (!tr) return; const row = otRows()[+tr.dataset.i]; if (!row) return;
+  otActiveB = row._b;
+  for (const t of $('otBody').querySelectorAll('tr[data-i]')) t.classList.toggle('active', t === tr);
+}
+$('otBody').addEventListener('focusin', e => markActive(e.target.closest('tr[data-i]')));
+$('otBody').addEventListener('pointerdown', e => { if (!e.target.closest('[data-del]')) markActive(e.target.closest('tr[data-i]')); });
+function otAddCopy(){
+  const view = otRows();
+  const src = view.find(r => r._b === otActiveB);
+  if (!src) { toast('請先點一下要複製的那一列，再按「＋ 增加」'); return; }
+  const rows = otBase();
+  const {_b, orig, added, ...copy} = rows[src._b];
+  rows.splice(src._b + 1, 0, {...copy, added: true});
+  otSave(rows);
+  otActiveB = src._b + 1; otFlashB = otActiveB; otSel.clear();
+  renderOT(); otFlashB = null;
+  const tr = [...$('otBody').querySelectorAll('tr.active')][0];
+  if (tr) { tr.scrollIntoView({block:'center', behavior:'smooth'}); }
+  toast('已新增一筆，可以直接修改');
+}
+$('otAddInline').onclick = otAddCopy;
+$('otAddFab').onclick = otAddCopy;
 // ---- 備註多選 ----
 function renderBulk(){
   const n = otSel.size;
@@ -1147,9 +1191,11 @@ $('otBody').addEventListener('change', e => {
 $('otBody').addEventListener('click', e => {
   const b = e.target.closest('[data-del]'); if (!b) return;
   const row = otRows()[+b.dataset.del]; if (!row) return;
-  const rows = otBase().filter((_, j) => j !== row._b); otSel.clear(); otSave(rows); renderOT(); toast('已刪除一筆');
+  const rows = otBase().filter((_, j) => j !== row._b); otSel.clear();
+  if (otActiveB !== null) otActiveB = otActiveB === row._b ? null : otActiveB > row._b ? otActiveB - 1 : otActiveB;
+  otSave(rows); renderOT(); toast('已刪除一筆');
 });
-$('otReset').onclick = () => { otSel.clear(); delete otEdits[otMonth]; writeJSON('duty-ot-v1', otEdits); renderOT(); toast('已依班表重新計算'); };
+$('otReset').onclick = () => { otSel.clear(); otActiveB = null; delete otEdits[otMonth]; writeJSON('duty-ot-v1', otEdits); renderOT(); toast('已依班表重新計算'); };
 $('otExport').onclick = otExport;
 
 // ================= 備份（匯出／匯入 .json） =================
