@@ -164,10 +164,12 @@ table.ot td:nth-child(2) input{font-weight:700;color:var(--ink)}
 .hintrow{display:flex;align-items:center;gap:12px;justify-content:space-between}
 .hintrow .sub{flex:1;min-width:0;margin:0}
 .addbtn{flex:none;font-weight:700;color:var(--accent);border-color:var(--accent)}
-.fab{position:fixed;right:max(16px,calc(env(safe-area-inset-right,0px) + 16px));bottom:calc(22px + env(safe-area-inset-bottom,0px));z-index:15;border:0;border-radius:999px;padding:14px 20px;font:inherit;font-weight:700;font-size:1rem;background:var(--accent);color:var(--accent-ink);box-shadow:0 10px 24px -8px rgba(69,66,63,.55);cursor:pointer;touch-action:manipulation}
+.fab{position:fixed;right:max(16px,calc(env(safe-area-inset-right,0px) + 16px));bottom:calc(22px + env(safe-area-inset-bottom,0px) + var(--kb,0px));transition:bottom .18s var(--ease);z-index:15;border:0;border-radius:999px;padding:14px 20px;font:inherit;font-weight:700;font-size:1rem;background:var(--accent);color:var(--accent-ink);box-shadow:0 10px 24px -8px rgba(69,66,63,.55);cursor:pointer;touch-action:manipulation}
 .fab:active{transform:scale(.95)}
 body.fab-on .wrap{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))}
-body.fab-on .toast{bottom:calc(92px + env(safe-area-inset-bottom,0px))}
+body.fab-on .toast{bottom:calc(92px + env(safe-area-inset-bottom,0px) + var(--kb,0px))}
+body.kb-open .fab{bottom:calc(12px + var(--kb,0px))}
+body.kb-open.fab-on .toast{bottom:calc(80px + var(--kb,0px))}
 @media (max-width:760px),(pointer:coarse){.addbtn{display:none}}
 table.ot tr.active td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 table.ot tr.active td{background:color-mix(in srgb,var(--accent) 6%,transparent)}
@@ -1061,6 +1063,17 @@ function otAddCopy(){
   toast('已新增一筆，可以直接修改');
 }
 $('otAddInline').onclick = otAddCopy;
+// 手機鍵盤跳出時，把浮動的「＋ 增加」移到鍵盤上方（iPhone 的鍵盤會蓋住固定在底部的按鈕）
+function placeAboveKeyboard(){
+  const vv = window.visualViewport; if (!vv) return;
+  const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  const open = kb > 80;   // 小於 80px 視為網址列變化，不是鍵盤
+  document.documentElement.style.setProperty('--kb', (open ? kb : 0) + 'px');
+  document.body.classList.toggle('kb-open', open);
+}
+if (window.visualViewport) { visualViewport.addEventListener('resize', placeAboveKeyboard); visualViewport.addEventListener('scroll', placeAboveKeyboard); }
+// 按下按鈕的瞬間保留「目前這列」（鍵盤收起時畫面會移動）
+$('otAddFab').addEventListener('pointerdown', e => e.preventDefault());
 $('otAddFab').onclick = otAddCopy;
 // ---- 備註多選 ----
 function renderBulk(){
