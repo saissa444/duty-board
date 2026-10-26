@@ -364,6 +364,7 @@ table.ot tr td{transition:background-color .2s var(--ease)}
   <div id="viewBk" class="view" hidden>
     <section class="bkcard">
       <h2>這台裝置目前的資料</h2>
+      <p class="sub" id="appVer" style="margin-top:-6px"></p>
       <div class="bkstats" id="bkStats"></div>
       <details class="bkdiff" id="bkDiffs" hidden></details>
     </section>
@@ -388,6 +389,7 @@ table.ot tr td{transition:background-color .2s var(--ease)}
   <button class="fab" id="otAddFab" type="button" aria-label="複製目前點選的那一列，新增一筆">＋ 增加</button>
 </div>
 <script>
+const APP_VERSION = 'v34';   // 每次更新要和 sw.js 的 CACHE 版本號一起改
 // Parses a 勤務分配表 PDF (as text items) into shifts. Pure function, no DOM.
 // 欄位位置依每頁表頭（值星、帶勤、業務整理…）來找，不受紙張大小（A4、B4…）影響。
 function parseDutyPages(pages) {
@@ -1300,6 +1302,7 @@ function bkSummary(data){
            ids: Object.values(ids).filter(v => (v||'').trim()).length, edits: diffs.length, diffs };
 }
 function renderBackup(){
+  $('appVer').textContent = `App 版本 ${APP_VERSION}・有網路時打開 App 會自動更新`;
   const sm = bkSummary(bkSnapshot());
   $('bkStats').innerHTML = [[sm.weeks, '週班表'], [sm.range, '班表範圍'], [sm.ids, '位已填人員編號'], [sm.edits, '筆資料有手動修改']]
     .map(([v,l]) => `<div><b>${esc(String(v))}</b><span>${l}</span></div>`).join('');
@@ -1349,8 +1352,23 @@ $('bkInput').onchange = async e => {
 // 回到上次停留的頁籤（放在所有功能載入之後）
 try { const t = localStorage.getItem('duty-tab'); if (t && t !== 'duty') showTab(t); } catch {}
 
+// ---- 自動更新：App 每次回到前景就檢查新版本；有新版就自動重新整理（正在輸入時改用按鈕） ----
+try { if (sessionStorage.getItem('duty-updated')) { sessionStorage.removeItem('duty-updated'); setTimeout(() => toast(`已更新到最新版（${APP_VERSION}）`), 400); } } catch {}
 if ('serviceWorker' in navigator && /^https?:/.test(location.protocol)) {
-  navigator.serviceWorker.register('sw.js').catch(err => console.warn('離線功能未啟用', err));
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;   // 第一次安裝不用重新整理
+    const el = document.activeElement, typing = el && el.matches('input:not([type=checkbox]),select,textarea');
+    if (typing || !$('saveSheet').hidden || !$('bkConfirm').hidden) { toast('有新版本', {label: '重新整理', run: () => location.reload()}); return; }
+    reloading = true; try { sessionStorage.setItem('duty-updated', '1'); } catch {}
+    location.reload();
+  });
+  const checkUpdate = () => navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(() => {});
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
+  window.addEventListener('pageshow', checkUpdate);
+  setInterval(checkUpdate, 30 * 60e3);
+  navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).catch(err => console.warn('離線功能未啟用', err));
 }
 </script>
 </body>
