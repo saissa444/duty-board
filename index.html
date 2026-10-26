@@ -164,13 +164,18 @@ table.ot td:nth-child(2) input{font-weight:700;color:var(--ink)}
 .hintrow{display:flex;align-items:center;gap:12px;justify-content:space-between}
 .hintrow .sub{flex:1;min-width:0;margin:0}
 .addbtn{flex:none;font-weight:700;color:var(--accent);border-color:var(--accent)}
-.fab{position:fixed;right:max(16px,calc(env(safe-area-inset-right,0px) + 16px));bottom:calc(22px + env(safe-area-inset-bottom,0px) + var(--kb,0px));transition:bottom .18s var(--ease);z-index:15;border:0;border-radius:999px;padding:14px 20px;font:inherit;font-weight:700;font-size:1rem;background:var(--accent);color:var(--accent-ink);box-shadow:0 10px 24px -8px rgba(69,66,63,.55);cursor:pointer;touch-action:manipulation}
+.fabs{position:fixed;right:max(16px,calc(env(safe-area-inset-right,0px) + 16px));bottom:calc(22px + env(safe-area-inset-bottom,0px) + var(--kb,0px));transition:bottom .18s var(--ease);z-index:15;display:flex;gap:10px;align-items:center}
+.fabs[hidden]{display:none}
+.fab{border:0;border-radius:999px;padding:14px 20px;font:inherit;font-weight:700;font-size:1rem;background:var(--accent);color:var(--accent-ink);box-shadow:0 10px 24px -8px rgba(69,66,63,.55);cursor:pointer;touch-action:manipulation}
+.fab2{background:var(--panel);color:var(--ink);box-shadow:0 0 0 1.5px var(--line),0 10px 24px -8px rgba(69,66,63,.45)}
+.fab:disabled{opacity:.45;box-shadow:0 0 0 1.5px var(--line)}
+.hintbtns{display:flex;gap:8px;flex:none}
 .fab:active{transform:scale(.95)}
 body.fab-on .wrap{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))}
 body.fab-on .toast{bottom:calc(92px + env(safe-area-inset-bottom,0px) + var(--kb,0px))}
-body.kb-open .fab{bottom:calc(12px + var(--kb,0px))}
+body.kb-open .fabs{bottom:calc(12px + var(--kb,0px))}
 body.kb-open.fab-on .toast{bottom:calc(80px + var(--kb,0px))}
-@media (max-width:760px),(pointer:coarse){.addbtn{display:none}}
+@media (max-width:760px),(pointer:coarse){.addbtn,.hintbtns{display:none}}
 table.ot tr.active td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 table.ot tr.active td{background:color-mix(in srgb,var(--accent) 6%,transparent)}
 table.ot tr.active td:nth-child(2){background:linear-gradient(color-mix(in srgb,var(--accent) 6%,transparent),color-mix(in srgb,var(--accent) 6%,transparent)),var(--panel)}
@@ -321,7 +326,6 @@ table.ot tr td{transition:background-color .2s var(--ease)}
         </select></label>
       </div>
       <div class="row">
-        <button class="btn" id="otUndo" type="button" disabled title="Ctrl／⌘＋Z">↶ 復原上一步</button>
         <button class="btn" id="otReset" type="button">依班表重新計算</button>
         <button class="btn primary" id="otExport" type="button">匯出 .xls</button>
       </div>
@@ -343,7 +347,10 @@ table.ot tr td{transition:background-color .2s var(--ease)}
     </div>
     <div class="hintrow">
       <p class="sub" id="otSelHint">備註可多選：電腦按住 Shift 點選整段、Ctrl／⌘ 點選加選；手機按住備註左邊的圓鈕上下拖拉。</p>
-      <button class="btn addbtn" id="otAddInline" type="button" title="複製目前點選的那一列，新增在它下面">＋ 增加</button>
+      <div class="hintbtns">
+        <button class="btn addbtn" id="otUndo" type="button" disabled title="Ctrl／⌘＋Z">↶ 復原上一步</button>
+        <button class="btn addbtn" id="otAddInline" type="button" title="複製目前點選的那一列，新增在它下面">＋ 增加</button>
+      </div>
     </div>
     <div class="tablewrap"><table class="ot" id="otTable">
       <thead><tr><th><button class="th" type="button" data-sort="id">人員編號</button></th><th><button class="th" type="button" data-sort="name">姓名</button></th><th>類別</th><th><button class="th" type="button" data-sort="date">加班日期</button></th><th>開始時間</th><th>時數</th><th>備註</th><th></th></tr></thead>
@@ -376,7 +383,10 @@ table.ot tr td{transition:background-color .2s var(--ease)}
 </div>
 <div class="toast" id="toast" hidden></div>
 <div class="sheetwrap" id="saveSheet" hidden></div>
-<button class="fab" id="otAddFab" type="button" hidden aria-label="複製目前點選的那一列，新增一筆">＋ 增加</button>
+<div class="fabs" id="otFabs" hidden>
+  <button class="fab fab2" id="otUndoFab" type="button" disabled aria-label="復原上一步">↶ 復原</button>
+  <button class="fab" id="otAddFab" type="button" aria-label="複製目前點選的那一列，新增一筆">＋ 增加</button>
+</div>
 <script>
 // Parses a 勤務分配表 PDF (as text items) into shifts. Pure function, no DOM.
 // 欄位位置依每頁表頭（值星、帶勤、業務整理…）來找，不受紙張大小（A4、B4…）影響。
@@ -952,7 +962,11 @@ function otPushUndo(){
   if (otUndo.length > 50) otUndo.shift();
   updUndo();
 }
-function updUndo(){ const b = $('otUndo'); if (b) { b.disabled = !otUndo.length; b.textContent = otUndo.length ? `↶ 復原上一步（${otUndo.length}）` : '↶ 復原上一步'; } }
+function updUndo(){
+  const n = otUndo.length, b = $('otUndo'), f = $('otUndoFab');
+  if (b) { b.disabled = !n; b.textContent = n ? `↶ 復原上一步（${n}）` : '↶ 復原上一步'; }
+  if (f) { f.disabled = !n; f.textContent = n ? `↶ 復原（${n}）` : '↶ 復原'; }
+}
 function otUndoLast(){
   const u = otUndo.pop(); if (!u) { toast('沒有可以復原的步驟'); return; }
   if (u.rows) otEdits[u.month] = u.rows; else delete otEdits[u.month];
@@ -1080,8 +1094,8 @@ function showTab(t){
   for (const [k,[tab,view]] of Object.entries(TABS)) { $(view).hidden = k !== t; $(tab).setAttribute('aria-selected', String(k === t)); }
   const v = $(TABS[t][1]); v.classList.remove('enter'); void v.offsetWidth; v.classList.add('enter');
   try { localStorage.setItem('duty-tab', t); } catch {}
-  $('otAddFab').hidden = t !== 'ot' || !(matchMedia('(max-width:760px)').matches || matchMedia('(pointer:coarse)').matches);
-  document.body.classList.toggle('fab-on', !$('otAddFab').hidden);
+  $('otFabs').hidden = t !== 'ot' || !(matchMedia('(max-width:760px)').matches || matchMedia('(pointer:coarse)').matches);
+  document.body.classList.toggle('fab-on', !$('otFabs').hidden);
   if (t === 'ot') renderOT();
   if (t === 'bk') renderBackup();
 }
@@ -1125,6 +1139,8 @@ function placeAboveKeyboard(){
 if (window.visualViewport) { visualViewport.addEventListener('resize', placeAboveKeyboard); visualViewport.addEventListener('scroll', placeAboveKeyboard); }
 // 按下按鈕的瞬間保留「目前這列」（鍵盤收起時畫面會移動）
 $('otAddFab').addEventListener('pointerdown', e => e.preventDefault());
+$('otUndoFab').addEventListener('pointerdown', e => e.preventDefault());
+$('otUndoFab').onclick = () => otUndoLast();
 $('otAddFab').onclick = otAddCopy;
 // ---- 備註多選 ----
 function renderBulk(){
