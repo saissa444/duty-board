@@ -182,15 +182,16 @@ table.ot tr.active td:nth-child(2){background:linear-gradient(color-mix(in srgb,
   table.ot td:nth-child(2),table.ot th:nth-child(2),table.ot td:nth-child(4),table.ot th:nth-child(4),
   table.ot td:nth-child(5),table.ot th:nth-child(5),table.ot td:nth-child(6),table.ot th:nth-child(6),
   table.ot td:nth-child(8),table.ot th:nth-child(8){position:sticky;z-index:2;background:var(--panel);box-shadow:none;padding-left:3px;padding-right:3px}
-  table.ot td:nth-child(2),table.ot th:nth-child(2){left:0;width:3.7em;min-width:3.7em;max-width:3.7em}
-  table.ot td:nth-child(4),table.ot th:nth-child(4){left:3.7em;width:7.2em;min-width:7.2em;max-width:7.2em}
-  table.ot td:nth-child(5),table.ot th:nth-child(5){left:10.9em;width:3.3em;min-width:3.3em;max-width:3.3em}
-  table.ot td:nth-child(6),table.ot th:nth-child(6){left:14.2em;width:2.4em;min-width:2.4em;max-width:2.4em;box-shadow:6px 0 8px -6px rgba(69,66,63,.4)}
+  table.ot td:nth-child(2),table.ot th:nth-child(2){left:0;width:var(--nmw,4.6em);min-width:var(--nmw,4.6em);max-width:var(--nmw,4.6em)}
+  table.ot td:nth-child(4),table.ot th:nth-child(4){left:var(--nmw,4.6em);width:7.2em;min-width:7.2em;max-width:7.2em}
+  table.ot td:nth-child(5),table.ot th:nth-child(5){left:calc(var(--nmw,4.6em) + 7.2em);width:3.3em;min-width:3.3em;max-width:3.3em}
+  table.ot td:nth-child(6),table.ot th:nth-child(6){left:calc(var(--nmw,4.6em) + 10.5em);width:2.4em;min-width:2.4em;max-width:2.4em;box-shadow:6px 0 8px -6px rgba(69,66,63,.4)}
   table.ot td:nth-child(8),table.ot th:nth-child(8){right:0;box-shadow:-6px 0 8px -6px rgba(69,66,63,.4)}
+  table.ot td:nth-child(2) input{padding-left:1px!important;padding-right:0!important}
   table.ot td:nth-child(2) input,table.ot td:nth-child(4) input,table.ot td:nth-child(5) input,table.ot td:nth-child(6) input{width:100%!important;padding-left:2px;padding-right:2px}
   table.ot th:nth-child(2),table.ot th:nth-child(4),table.ot th:nth-child(5),table.ot th:nth-child(6){white-space:normal;line-height:1.2}
   table.ot td.rm{min-width:0}
-  table.ot td.rm input{width:6em}
+  table.ot td.rm input{width:5em}
   table.ot .del{padding:4px 6px}
   table.ot tr.sel td:nth-child(4),table.ot tr.sel td:nth-child(5),table.ot tr.sel td:nth-child(6),table.ot tr.sel td:nth-child(8){background:linear-gradient(var(--mine),var(--mine)),var(--panel)}
   table.ot tr.active td:nth-child(4),table.ot tr.active td:nth-child(5),table.ot tr.active td:nth-child(6),table.ot tr.active td:nth-child(8){background:linear-gradient(color-mix(in srgb,var(--accent) 6%,transparent),color-mix(in srgb,var(--accent) 6%,transparent)),var(--panel)}
@@ -961,6 +962,8 @@ function renderOT(all, ps){
 }
 function renderOTTable(all, ps){
   all = all || shifts(); ps = ps || people();
+  const longest = Math.max(3, ...otRows(all, ps).map(r => [...(r.name||'')].length));
+  $('otTable').style.setProperty('--nmw', (longest * 1.12 + 1.1).toFixed(2) + 'em');   // 手機凍結欄：姓名欄寬依最長的名字
   $('otSort').value = otSort;
   for (const th of document.querySelectorAll('button.th')) th.classList.toggle('on', th.dataset.sort === otSort);
   const rows = otRows(all, ps);
