@@ -175,6 +175,32 @@ table.ot tr.active td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 table.ot tr.active td{background:color-mix(in srgb,var(--accent) 6%,transparent)}
 table.ot tr.active td:nth-child(2){background:linear-gradient(color-mix(in srgb,var(--accent) 6%,transparent),color-mix(in srgb,var(--accent) 6%,transparent)),var(--panel)}
 @media (prefers-reduced-motion:no-preference){@keyframes flashrow{from{background:color-mix(in srgb,var(--accent) 28%,var(--panel))}}table.ot tr.flash td{animation:flashrow 1.2s var(--ease)}}
+/* 手機：姓名、加班日期、開始時間、時數 凍結在左邊，刪除鍵 ✕ 凍結在右邊（人員編號、類別、備註可左右滑） */
+@media (max-width:760px){
+  table.ot{font-size:.8rem;min-width:0}
+  table.ot input,table.ot select{font-size:.8rem}
+  table.ot td:nth-child(2),table.ot th:nth-child(2),table.ot td:nth-child(4),table.ot th:nth-child(4),
+  table.ot td:nth-child(5),table.ot th:nth-child(5),table.ot td:nth-child(6),table.ot th:nth-child(6),
+  table.ot td:nth-child(8),table.ot th:nth-child(8){position:sticky;z-index:2;background:var(--panel);box-shadow:none;padding-left:3px;padding-right:3px}
+  table.ot td:nth-child(2),table.ot th:nth-child(2){left:0;width:3.7em;min-width:3.7em;max-width:3.7em}
+  table.ot td:nth-child(4),table.ot th:nth-child(4){left:3.7em;width:7.2em;min-width:7.2em;max-width:7.2em}
+  table.ot td:nth-child(5),table.ot th:nth-child(5){left:10.9em;width:3.3em;min-width:3.3em;max-width:3.3em}
+  table.ot td:nth-child(6),table.ot th:nth-child(6){left:14.2em;width:2.4em;min-width:2.4em;max-width:2.4em;box-shadow:6px 0 8px -6px rgba(69,66,63,.4)}
+  table.ot td:nth-child(8),table.ot th:nth-child(8){right:0;box-shadow:-6px 0 8px -6px rgba(69,66,63,.4)}
+  table.ot td:nth-child(2) input,table.ot td:nth-child(4) input,table.ot td:nth-child(5) input,table.ot td:nth-child(6) input{width:100%!important;padding-left:2px;padding-right:2px}
+  table.ot th:nth-child(2),table.ot th:nth-child(4),table.ot th:nth-child(5),table.ot th:nth-child(6){white-space:normal;line-height:1.2}
+  table.ot td.rm{min-width:0}
+  table.ot td.rm input{width:6em}
+  table.ot .del{padding:4px 6px}
+  table.ot tr.sel td:nth-child(4),table.ot tr.sel td:nth-child(5),table.ot tr.sel td:nth-child(6),table.ot tr.sel td:nth-child(8){background:linear-gradient(var(--mine),var(--mine)),var(--panel)}
+  table.ot tr.active td:nth-child(4),table.ot tr.active td:nth-child(5),table.ot tr.active td:nth-child(6),table.ot tr.active td:nth-child(8){background:linear-gradient(color-mix(in srgb,var(--accent) 6%,transparent),color-mix(in srgb,var(--accent) 6%,transparent)),var(--panel)}
+  table.ot tr.active td:nth-child(2){box-shadow:inset 3px 0 0 var(--accent)}
+}
+/* 特別窄的手機（例如 iPhone SE）：只凍結姓名、加班日期與 ✕，留空間給備註 */
+@media (max-width:360px){
+  table.ot td:nth-child(5),table.ot th:nth-child(5),table.ot td:nth-child(6),table.ot th:nth-child(6){position:static;box-shadow:none}
+  table.ot td:nth-child(4),table.ot th:nth-child(4){box-shadow:6px 0 8px -6px rgba(69,66,63,.4)}
+}
 table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
 .detail{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:8px}
 .shift{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:baseline}
