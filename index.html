@@ -207,6 +207,30 @@ table.ot tr.active td:nth-child(2){background:linear-gradient(color-mix(in srgb,
   table.ot td:nth-child(5),table.ot th:nth-child(5),table.ot td:nth-child(6),table.ot th:nth-child(6){position:static;box-shadow:none}
   table.ot td:nth-child(4),table.ot th:nth-child(4){box-shadow:6px 0 8px -6px rgba(69,66,63,.4)}
 }
+/* 手機表格：只顯示，不直接輸入；每列加高、圓鈕加大，點一列開編輯面板 */
+table.ot .cv{display:block;padding:9px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+table.ot .cv.nm{font-weight:700}
+table.ot.mob td:nth-child(8),table.ot.mob th:nth-child(8){display:none}
+table.ot.mob td.rm{min-width:9em}
+table.ot.mob td.rm .cv{flex:1;min-width:0}
+table.ot.mob .pick{width:28px;height:28px}
+table.ot.mob .pick[aria-checked="true"]::after{left:8px;top:3px;width:6px;height:13px}
+.roweditor{gap:14px;max-height:calc(100% - 24px);overflow:auto}
+.rehead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.rehead h2{font-family:var(--body);font-size:1.15rem;margin:0}
+.refields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.refields label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted);font-weight:700;letter-spacing:.04em}
+.refields label.wide{grid-column:1/-1}
+.refields input,.refields select{font:inherit;font-size:16px;font-weight:400;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:12px;padding:12px;min-width:0;width:100%}
+.refields input.mono{font-family:var(--mono)}
+.refields input:focus,.refields select:focus{outline:none;border-color:var(--accent)}
+.remsg{margin:0;color:var(--now);font-size:.85rem;min-height:1.2em}
+.rebtns{display:grid;grid-template-columns:1fr 2fr;gap:10px}
+.rebtns .btn,.reextra .btn{justify-content:center;padding:13px 12px;font-size:1rem}
+.reextra{display:grid;grid-template-columns:1fr 1fr;gap:10px;border-top:1px solid var(--line);padding-top:14px}
+.reextra #rePick{grid-column:1/-1}
+.btn.danger{color:var(--now);border-color:color-mix(in srgb,var(--now) 45%,var(--line))}
+.btn.danger.sure{background:var(--now);color:#fff;border-color:var(--now)}
 table.ot td.empty{text-align:center;color:var(--muted);padding:24px}
 .detail{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:8px}
 .shift{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:baseline}
@@ -384,12 +408,13 @@ table.ot tr td{transition:background-color .2s var(--ease)}
 </div>
 <div class="toast" id="toast" hidden></div>
 <div class="sheetwrap" id="saveSheet" hidden></div>
+<div class="sheetwrap" id="rowSheet" hidden></div>
 <div class="fabs" id="otFabs" hidden>
   <button class="fab fab2" id="otUndoFab" type="button" disabled aria-label="復原上一步">↶ 復原</button>
   <button class="fab" id="otAddFab" type="button" aria-label="複製目前點選的那一列，新增一筆">＋ 增加</button>
 </div>
 <script>
-const APP_VERSION = 'v34';   // 每次更新要和 sw.js 的 CACHE 版本號一起改
+const APP_VERSION = 'v35';   // 每次更新要和 sw.js 的 CACHE 版本號一起改
 // Parses a 勤務分配表 PDF (as text items) into shifts. Pure function, no DOM.
 // 欄位位置依每頁表頭（值星、帶勤、業務整理…）來找，不受紙張大小（A4、B4…）影響。
 function parseDutyPages(pages) {
@@ -1010,7 +1035,14 @@ function renderOTTable(all, ps){
   $('otSum').innerHTML = Object.entries(tot).map(([n,h]) => { const p = ps.find(x=>x.name===n); return `<span class="pill" style="--c:${p?color(p.code):'var(--pX)'}"><span class="tag"><i></i>${esc(n)}</span><b>${h}</b><span class="muted">小時・${rows.filter(r=>r.name===n).length} 筆</span></span>`; }).join('');
   const opt = v => OT_CATS.map(c => `<option${c===v?' selected':''}>${c}</option>`).join('') + (OT_CATS.includes(v) ? '' : `<option selected>${esc(v)}</option>`);
   otSel = new Set([...otSel].filter(i => i < rows.length));
-  $('otBody').innerHTML = rows.length ? rows.map((r,i) => `<tr data-i="${i}" class="${otSel.has(i)?'sel':''}${r._b === otActiveB ? ' active' : ''}${r._b === otFlashB ? ' flash' : ''}">
+  const mob = mobUI();
+  const cv = (k, v, cls='') => `<span class="cv ${cls}" data-k="${k}">${esc(v) || '&nbsp;'}</span>`;
+  $('otTable').classList.toggle('mob', mob);
+  $('otBody').innerHTML = !rows.length ? '' : mob ? rows.map((r,i) => `<tr data-i="${i}" class="${otSel.has(i)?'sel':''}${r._b === otActiveB ? ' active' : ''}${r._b === otFlashB ? ' flash' : ''}">
+    <td>${cv('id', r.id, 'mono')}</td><td>${cv('name', r.name, 'nm')}</td><td>${cv('cat', r.cat)}</td>
+    <td>${cv('date', r.date, 'mono')}</td><td>${cv('time', r.time, 'mono')}</td><td>${cv('hours', r.hours, 'mono')}</td>
+    <td class="rm"><span class="pick" role="checkbox" tabindex="0" aria-checked="${otSel.has(i)}" aria-label="選取第 ${i+1} 筆" data-pick="${i}"></span>${cv('remark', r.remark)}</td>
+    <td></td></tr>`).join('') : rows.map((r,i) => `<tr data-i="${i}" class="${otSel.has(i)?'sel':''}${r._b === otActiveB ? ' active' : ''}${r._b === otFlashB ? ' flash' : ''}">
     <td><input class="mono" data-k="id" value="${esc(r.id)}" style="width:6.5em"></td>
     <td><input data-k="name" value="${esc(r.name)}" style="width:5.5em"></td>
     <td><select data-k="cat">${opt(r.cat)}</select></td>
@@ -1018,8 +1050,9 @@ function renderOTTable(all, ps){
     <td><input class="mono" data-k="time" value="${esc(r.time)}" style="width:4.5em" inputmode="numeric"></td>
     <td><input class="mono" data-k="hours" value="${esc(r.hours)}" style="width:3.5em" inputmode="decimal"></td>
     <td class="rm"><span class="pick" role="checkbox" tabindex="0" aria-checked="${otSel.has(i)}" aria-label="選取第 ${i+1} 筆備註" data-pick="${i}"></span><input data-k="remark" value="${esc(r.remark)}" list="otRemarks"></td>
-    <td><button class="del" type="button" aria-label="刪除這筆" data-del="${i}">✕</button></td></tr>`).join('')
-    : `<tr><td colspan="8" class="empty">${!people().some(p => (otIds[p.name]||'').trim() && included(p.name)) && people().some(p => (otIds[p.name]||'').trim()) ? '目前沒有勾選要匯出的人，請在上方「人員編號」勾選。' : Object.values(otIds).some(v => (v||'').trim()) ? '這個月沒有算出加班。' : '請先在上方「人員編號」填入要彙整的人，例如在自己名字旁填 A0557。'}</td></tr>`;
+    <td><button class="del" type="button" aria-label="刪除這筆" data-del="${i}">✕</button></td></tr>`).join('');
+  if (!rows.length) $('otBody').innerHTML = `<tr><td colspan="8" class="empty">${!people().some(p => (otIds[p.name]||'').trim() && included(p.name)) && people().some(p => (otIds[p.name]||'').trim()) ? '目前沒有勾選要匯出的人，請在上方「人員編號」勾選。' : Object.values(otIds).some(v => (v||'').trim()) ? '這個月沒有算出加班。' : '請先在上方「人員編號」填入要彙整的人，例如在自己名字旁填 A0557。'}</td></tr>`;
+  $('otSelHint').textContent = mob ? '點任一列可開啟編輯（改內容、複製、刪除）；按住左邊的圓鈕上下拖拉可多選備註。' : '備註可多選：電腦按住 Shift 點選整段、Ctrl／⌘ 點選加選；手機按住備註左邊的圓鈕上下拖拉。';
   $('otRemarks').innerHTML = [...new Set([OT_REMARK, '帶勤', '業務整理', '值星', '機動待命', ...rows.map(r => r.remark).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('');
   renderBulk();
   const missing = rows.some(r => !r.id);
@@ -1130,6 +1163,59 @@ function otAddCopy(){
   toast('已新增一筆，可以直接修改', undoAction);
 }
 $('otAddInline').onclick = otAddCopy;
+// ---- 手機：點一列打開寬敞的編輯面板 ----
+function mobUI(){ return matchMedia('(max-width:760px)').matches; }
+matchMedia('(max-width:760px)').addEventListener('change', () => { if (!$('viewOT').hidden) renderOT(); });
+$('otBody').addEventListener('click', e => {
+  if (!mobUI() || e.target.closest('[data-pick]') || Date.now() - pickEndedAt < 500) return;   // 點圓鈕只做選取，不開編輯
+  const tr = e.target.closest('tr[data-i]'); if (tr) openRowEditor(+tr.dataset.i);
+});
+function openRowEditor(i){
+  const view = otRows(); const r = view[i]; if (!r) return;
+  otActiveB = r._b; renderOTTable();
+  const sh = $('rowSheet');
+  const opts = OT_CATS.map(c => `<option${c===r.cat?' selected':''}>${c}</option>`).join('') + (OT_CATS.includes(r.cat) ? '' : `<option selected>${esc(r.cat)}</option>`);
+  sh.innerHTML = `<div class="sheet roweditor" role="dialog" aria-modal="true" aria-labelledby="reTitle">
+      <div class="rehead"><h2 id="reTitle">${esc(r.name)}・${esc(r.date.slice(5))}</h2><span class="muted mono">${esc(r.id || '未填人員編號')}</span></div>
+      <div class="refields">
+        <label>類別<select id="reCat">${opts}</select></label>
+        <label>加班日期<input id="reDate" class="mono" value="${esc(r.date)}" inputmode="numeric" placeholder="2026/10/05"></label>
+        <label>開始時間<input id="reTime" class="mono" value="${esc(r.time)}" inputmode="numeric" placeholder="1800"></label>
+        <label>時數<input id="reHours" class="mono" value="${esc(r.hours)}" inputmode="decimal"></label>
+        <label class="wide">備註<input id="reRemark" value="${esc(r.remark)}" list="otRemarks"></label>
+      </div>
+      <p class="remsg" id="reMsg"></p>
+      <div class="rebtns"><button class="btn" id="reCancel" type="button">取消</button><button class="btn primary" id="reSave" type="button">儲存</button></div>
+      <div class="reextra">
+        <button class="btn" id="rePick" type="button">${otSel.has(i) ? '✓ 已選取（點一下取消）' : '選取這筆（多選備註用）'}</button>
+        <button class="btn" id="reCopy" type="button">＋ 複製一筆</button>
+        <button class="btn danger" id="reDel" type="button">刪除這筆</button>
+      </div>
+    </div>`;
+  sh.hidden = false;
+  const close = () => { sh.hidden = true; sh.innerHTML = ''; };
+  sh.onclick = e => { if (e.target === sh) close(); };
+  $('reCancel').onclick = close;
+  $('reSave').onclick = () => {
+    const v = {cat: $('reCat').value, date: $('reDate').value.trim(), time: $('reTime').value.trim(), hours: $('reHours').value.trim(), remark: $('reRemark').value.trim()};
+    if (!/^\d{4}\/\d{2}\/\d{2}$/.test(v.date)) { $('reMsg').textContent = '加班日期要寫成 2026/10/05 這種 10 碼格式'; return; }
+    if (!/^\d{4}$/.test(v.time)) { $('reMsg').textContent = '開始時間要寫成 4 碼，例如 0600、1800'; return; }
+    if (!(parseFloat(v.hours) > 0)) { $('reMsg').textContent = '時數要填大於 0 的數字'; return; }
+    const changed = OT_F.filter(f => String(v[f]) !== String(r[f]));
+    close();
+    if (!changed.length) return;
+    const rows = otBase(); Object.assign(rows[r._b], v); otSave(rows); renderOT(); toast('已儲存修改', undoAction);
+  };
+  $('rePick').onclick = () => { otSel.has(i) ? otSel.delete(i) : otSel.add(i); otAnchor = i; renderBulk(); close(); };
+  $('reCopy').onclick = () => { close(); otActiveB = r._b; otAddCopy(); };
+  $('reDel').onclick = e => {
+    const b = e.currentTarget;
+    if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = '確定刪除？再按一次'; b.classList.add('sure'); return; }
+    close();
+    const rows = otBase().filter((_, j) => j !== r._b); otSel.clear();
+    otActiveB = null; otSave(rows); renderOT(); toast(`已刪除 ${r.name} ${r.date.slice(5)} ${r.time}`, undoAction);
+  };
+}
 // 手機鍵盤跳出時，把浮動的「＋ 增加」移到鍵盤上方（iPhone 的鍵盤會蓋住固定在底部的按鈕）
 function placeAboveKeyboard(){
   const vv = window.visualViewport; if (!vv) return;
@@ -1205,8 +1291,10 @@ $('otBody').addEventListener('pointermove', e => {
   drag.x = e.clientX; drag.y = e.clientY; autoScroll(e.clientY);
   dragTo(e.clientX, e.clientY);
 });
+let pickEndedAt = 0;
 const endDrag = e => {
   if (!drag || e.pointerId !== drag.id) return;
+  pickEndedAt = Date.now();
   clearInterval(scrollTimer); scrollTimer = null;
   if (!drag.moved) { drag.adding ? otSel.add(drag.start) : otSel.delete(drag.start); renderBulk(); }
   otAnchor = drag.start; drag = null;
