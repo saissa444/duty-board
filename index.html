@@ -241,7 +241,10 @@ h1{font-weight:700;letter-spacing:.16em}
 .tab::after{content:"";position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:3px 3px 0 0;background:var(--accent);transform:scaleX(0);transition:transform .3s var(--ease)}
 .tab[aria-selected="true"]::after{transform:scaleX(1)}
 .watch{border-radius:12px}
-.toast{border-radius:14px;box-shadow:0 12px 30px -12px rgba(0,0,0,.45)}
+.toast{border-radius:14px;box-shadow:0 12px 30px -12px rgba(0,0,0,.45);display:flex;align-items:center;gap:12px}
+.toast[hidden]{display:none}
+.toastact{font:inherit;font-weight:700;background:none;border:0;color:var(--accent-soft);padding:2px 4px;cursor:pointer;white-space:nowrap;text-decoration:underline;text-underline-offset:3px}
+:root[data-theme="dark"] .toastact{color:var(--accent-ink)}
 .pick{transition:background-color .15s var(--ease),border-color .15s var(--ease),transform .12s var(--ease)}
 .pick:active{transform:scale(.88)}
 table.ot tr td{transition:background-color .2s var(--ease)}
@@ -318,6 +321,7 @@ table.ot tr td{transition:background-color .2s var(--ease)}
         </select></label>
       </div>
       <div class="row">
+        <button class="btn" id="otUndo" type="button" disabled title="Ctrl／⌘＋Z">↶ 復原上一步</button>
         <button class="btn" id="otReset" type="button">依班表重新計算</button>
         <button class="btn primary" id="otExport" type="button">匯出 .xls</button>
       </div>
@@ -672,7 +676,11 @@ function render(){
   if (typeof renderOT === 'function' && !$('viewOT').hidden) renderOT(all, ps);
 }
 
-let toastT; function toast(msg){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true, 3500); }
+let toastT; function toast(msg, action){
+  const t=$('toast'); t.textContent=msg;
+  if (action) { const b = document.createElement('button'); b.type='button'; b.className='toastact'; b.textContent=action.label; b.onclick = () => { t.hidden = true; action.run(); }; t.append(b); }
+  t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true, action ? 7000 : 3500);
+}
 
 $('prevWk').onclick = () => { const ids=weekIds(); viewWeek = ids[Math.max(0, ids.indexOf(viewWeek)-1)]; render(); };
 $('nextWk').onclick = () => { const ids=weekIds(); viewWeek = ids[Math.min(ids.length-1, ids.indexOf(viewWeek)+1)]; render(); };
@@ -938,7 +946,21 @@ function otSorter(){
   return (a, b) => (!a.id - !b.id) || cmp(a.id, b.id) || cmp(a.name, b.name) || when(a, b) || a._b - b._b;
 }
 function setSort(v){ otSort = v; otSel.clear(); renderOTTable(); }
-function otSave(rows){ otEdits[otMonth] = rows.map(({_b, ...r}) => r); writeJSON('duty-ot-v1', otEdits); }
+let otUndo = [];
+function otPushUndo(){
+  otUndo.push({month: otMonth, rows: otEdits[otMonth] ? JSON.parse(JSON.stringify(otEdits[otMonth])) : null});
+  if (otUndo.length > 50) otUndo.shift();
+  updUndo();
+}
+function updUndo(){ const b = $('otUndo'); if (b) { b.disabled = !otUndo.length; b.textContent = otUndo.length ? `↶ 復原上一步（${otUndo.length}）` : '↶ 復原上一步'; } }
+function otUndoLast(){
+  const u = otUndo.pop(); if (!u) { toast('沒有可以復原的步驟'); return; }
+  if (u.rows) otEdits[u.month] = u.rows; else delete otEdits[u.month];
+  writeJSON('duty-ot-v1', otEdits);
+  otMonth = u.month; otSel.clear(); updUndo(); renderOT(); toast('已復原上一步');
+}
+const undoAction = {label: '復原', run: () => otUndoLast()};
+function otSave(rows){ otPushUndo(); otEdits[otMonth] = rows.map(({_b, ...r}) => r); writeJSON('duty-ot-v1', otEdits); }
 function renderOT(all, ps){
   all = all || shifts(); ps = ps || people();
   const months = otMonths(all);
@@ -1089,7 +1111,7 @@ function otAddCopy(){
   renderOT(); otFlashB = null;
   const tr = [...$('otBody').querySelectorAll('tr.active')][0];
   if (tr) { tr.scrollIntoView({block:'center', behavior:'smooth'}); }
-  toast('已新增一筆，可以直接修改');
+  toast('已新增一筆，可以直接修改', undoAction);
 }
 $('otAddInline').onclick = otAddCopy;
 // 手機鍵盤跳出時，把浮動的「＋ 增加」移到鍵盤上方（iPhone 的鍵盤會蓋住固定在底部的按鈕）
@@ -1183,7 +1205,7 @@ $('otBulkApply').onclick = () => {
   if (!v) { toast('請先輸入要套用的備註'); $('otBulkText').focus(); return; }
   const view = otRows(); const pick = new Set([...otSel].map(i => view[i]?._b));
   const rows = otBase().map((r, b) => pick.has(b) ? {...r, remark: v} : r);
-  const n = otSel.size; otSave(rows); otSel.clear(); $('otBulkText').value = ''; renderOT(); toast(`已修改 ${n} 筆備註`);
+  const n = otSel.size; otSave(rows); otSel.clear(); $('otBulkText').value = ''; renderOT(); toast(`已修改 ${n} 筆備註`, undoAction);
 };
 // 按 Enter 不會自動套用（中文輸入法選字會用到 Enter），要按「套用到已選」才會修改
 $('otBulkText').addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
@@ -1235,9 +1257,15 @@ $('otBody').addEventListener('click', e => {
   const row = otRows()[+b.dataset.del]; if (!row) return;
   const rows = otBase().filter((_, j) => j !== row._b); otSel.clear();
   if (otActiveB !== null) otActiveB = otActiveB === row._b ? null : otActiveB > row._b ? otActiveB - 1 : otActiveB;
-  otSave(rows); renderOT(); toast('已刪除一筆');
+  otSave(rows); renderOT(); toast(`已刪除 ${row.name} ${row.date.slice(5)} ${row.time}`, undoAction);
 });
-$('otReset').onclick = () => { otSel.clear(); otActiveB = null; delete otEdits[otMonth]; writeJSON('duty-ot-v1', otEdits); renderOT(); toast('已依班表重新計算'); };
+$('otReset').onclick = () => { if (!otEdits[otMonth]) { toast('這個月沒有手動修改'); return; } otPushUndo(); otSel.clear(); otActiveB = null; delete otEdits[otMonth]; writeJSON('duty-ot-v1', otEdits); renderOT(); toast('已依班表重新計算', undoAction); };
+$('otUndo').onclick = otUndoLast;
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== 'z' || $('viewOT').hidden) return;
+  const el = document.activeElement; if (el && el.matches('input:not([type=checkbox]),select,textarea')) return;   // 輸入框裡的 Ctrl＋Z 留給文字復原
+  e.preventDefault(); otUndoLast();
+});
 $('otExport').onclick = otExport;
 
 // ================= 備份（匯出／匯入 .json） =================
