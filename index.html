@@ -210,6 +210,26 @@ table.ot tr.active td:nth-child(2){background:linear-gradient(color-mix(in srgb,
 /* 手機表格：只顯示，不直接輸入；每列加高、圓鈕加大，點一列開編輯面板 */
 table.ot .cv{display:block;padding:9px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
 table.ot .cv.nm{font-weight:700}
+table.ot.mob{min-width:0!important;width:100%}
+table.ot.mob thead{display:none}
+table.ot.mob tr.mrow td{padding:4px 0;border:0;position:static!important;background:none!important;box-shadow:none!important;width:auto;min-width:0;max-width:none}
+.swipe{position:relative;overflow:hidden;border-radius:14px}
+.swdel{visibility:hidden}
+.swipe.reveal .swdel{visibility:visible}
+.swdel{position:absolute;right:0;top:0;bottom:0;width:88px;border:0;background:var(--now);color:#fff;font:inherit;font-weight:700;font-size:1rem;cursor:pointer}
+.card{position:relative;z-index:1;display:flex;align-items:center;gap:12px;padding:12px 12px 12px 10px;background:var(--panel);border-left:4px solid var(--c);touch-action:pan-y;transition:transform .22s var(--ease),background-color .2s var(--ease);cursor:pointer}
+.card.dragging{transition:none}
+.cinfo{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.cinfo .l1{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.cinfo .cn{font-size:1rem}
+.cinfo .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.cinfo .ch{color:var(--accent);font-weight:700}
+.cinfo .l2{display:flex;gap:8px;font-size:.82rem;color:var(--muted);min-width:0}
+.cinfo .cr{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.cinfo .cid{opacity:.8}
+table.ot.mob tr.sel .card{background:linear-gradient(var(--mine),var(--mine)),var(--panel)}
+table.ot.mob tr.active .card{box-shadow:inset 0 0 0 1.5px var(--accent)}
+table.ot.mob tr.active td:first-child{box-shadow:none!important}
 table.ot.mob td:nth-child(8),table.ot.mob th:nth-child(8){display:none}
 table.ot.mob td.rm{min-width:9em}
 table.ot.mob td.rm .cv{flex:1;min-width:0}
@@ -414,7 +434,7 @@ table.ot tr td{transition:background-color .2s var(--ease)}
   <button class="fab" id="otAddFab" type="button" aria-label="複製目前點選的那一列，新增一筆">＋ 增加</button>
 </div>
 <script>
-const APP_VERSION = 'v35';   // 每次更新要和 sw.js 的 CACHE 版本號一起改
+const APP_VERSION = 'v36';   // 每次更新要和 sw.js 的 CACHE 版本號一起改
 // Parses a 勤務分配表 PDF (as text items) into shifts. Pure function, no DOM.
 // 欄位位置依每頁表頭（值星、帶勤、業務整理…）來找，不受紙張大小（A4、B4…）影響。
 function parseDutyPages(pages) {
@@ -1038,11 +1058,16 @@ function renderOTTable(all, ps){
   const mob = mobUI();
   const cv = (k, v, cls='') => `<span class="cv ${cls}" data-k="${k}">${esc(v) || '&nbsp;'}</span>`;
   $('otTable').classList.toggle('mob', mob);
-  $('otBody').innerHTML = !rows.length ? '' : mob ? rows.map((r,i) => `<tr data-i="${i}" class="${otSel.has(i)?'sel':''}${r._b === otActiveB ? ' active' : ''}${r._b === otFlashB ? ' flash' : ''}">
-    <td>${cv('id', r.id, 'mono')}</td><td>${cv('name', r.name, 'nm')}</td><td>${cv('cat', r.cat)}</td>
-    <td>${cv('date', r.date, 'mono')}</td><td>${cv('time', r.time, 'mono')}</td><td>${cv('hours', r.hours, 'mono')}</td>
-    <td class="rm"><span class="pick" role="checkbox" tabindex="0" aria-checked="${otSel.has(i)}" aria-label="選取第 ${i+1} 筆" data-pick="${i}"></span>${cv('remark', r.remark)}</td>
-    <td></td></tr>`).join('') : rows.map((r,i) => `<tr data-i="${i}" class="${otSel.has(i)?'sel':''}${r._b === otActiveB ? ' active' : ''}${r._b === otFlashB ? ' flash' : ''}">
+  $('otBody').innerHTML = !rows.length ? '' : mob ? rows.map((r,i) => `<tr data-i="${i}" class="mrow ${otSel.has(i)?'sel':''}${r._b === otActiveB ? ' active' : ''}${r._b === otFlashB ? ' flash' : ''}"><td colspan="8">
+    <div class="swipe"><button class="swdel" type="button" data-del="${i}" tabindex="-1">刪除</button>
+      <div class="card" style="--c:${(people().find(p => p.name === r.name) || {}).code ? color(people().find(p => p.name === r.name).code) : 'var(--pX)'}">
+        <span class="pick" role="checkbox" tabindex="0" aria-checked="${otSel.has(i)}" aria-label="選取 ${esc(r.name)} ${esc(r.date)}" data-pick="${i}"></span>
+        <div class="cinfo">
+          <div class="l1"><b class="cn">${esc(r.name)}</b><span class="mono">${esc(r.date.slice(5))}</span><span class="mono">${esc(r.time)} 起</span><span class="mono ch">${esc(r.hours)} 小時</span></div>
+          <div class="l2"><span>${esc(r.cat)}</span><span class="cr">${esc(r.remark) || '（無備註）'}</span><span class="cid mono">${esc(r.id)}</span></div>
+        </div>
+      </div>
+    </div></td></tr>`).join('') : rows.map((r,i) => `<tr data-i="${i}" class="${otSel.has(i)?'sel':''}${r._b === otActiveB ? ' active' : ''}${r._b === otFlashB ? ' flash' : ''}">
     <td><input class="mono" data-k="id" value="${esc(r.id)}" style="width:6.5em"></td>
     <td><input data-k="name" value="${esc(r.name)}" style="width:5.5em"></td>
     <td><select data-k="cat">${opt(r.cat)}</select></td>
@@ -1052,7 +1077,7 @@ function renderOTTable(all, ps){
     <td class="rm"><span class="pick" role="checkbox" tabindex="0" aria-checked="${otSel.has(i)}" aria-label="選取第 ${i+1} 筆備註" data-pick="${i}"></span><input data-k="remark" value="${esc(r.remark)}" list="otRemarks"></td>
     <td><button class="del" type="button" aria-label="刪除這筆" data-del="${i}">✕</button></td></tr>`).join('');
   if (!rows.length) $('otBody').innerHTML = `<tr><td colspan="8" class="empty">${!people().some(p => (otIds[p.name]||'').trim() && included(p.name)) && people().some(p => (otIds[p.name]||'').trim()) ? '目前沒有勾選要匯出的人，請在上方「人員編號」勾選。' : Object.values(otIds).some(v => (v||'').trim()) ? '這個月沒有算出加班。' : '請先在上方「人員編號」填入要彙整的人，例如在自己名字旁填 A0557。'}</td></tr>`;
-  $('otSelHint').textContent = mob ? '點任一列可開啟編輯（改內容、複製、刪除）；按住左邊的圓鈕上下拖拉可多選備註。' : '備註可多選：電腦按住 Shift 點選整段、Ctrl／⌘ 點選加選；手機按住備註左邊的圓鈕上下拖拉。';
+  $('otSelHint').textContent = mob ? '點一筆可編輯；往左滑可刪除；按住左邊的圓鈕上下拖拉可多選備註。' : '備註可多選：電腦按住 Shift 點選整段、Ctrl／⌘ 點選加選；手機按住備註左邊的圓鈕上下拖拉。';
   $('otRemarks').innerHTML = [...new Set([OT_REMARK, '帶勤', '業務整理', '值星', '機動待命', ...rows.map(r => r.remark).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('');
   renderBulk();
   const missing = rows.some(r => !r.id);
@@ -1163,11 +1188,39 @@ function otAddCopy(){
   toast('已新增一筆，可以直接修改', undoAction);
 }
 $('otAddInline').onclick = otAddCopy;
+// ---- 手機：卡片往左滑露出「刪除」 ----
+let swipe = null, swipedAt = 0;
+const SW_OPEN = -88;
+function closeSwipes(except){ for (const c of $('otBody').querySelectorAll('.card.open')) if (c !== except) { c.classList.remove('open'); c.style.transform = ''; setTimeout(() => { if (!c.classList.contains('open')) c.parentElement.classList.remove('reveal'); }, 250); } }
+$('otBody').addEventListener('pointerdown', e => {
+  const card = e.target.closest('.card'); if (!card || e.target.closest('[data-pick]') || !mobUI()) { if (!e.target.closest('.swdel')) closeSwipes(); return; }
+  closeSwipes(card);
+  swipe = {card, id: e.pointerId, x: e.clientX, y: e.clientY, base: card.classList.contains('open') ? SW_OPEN : 0, dir: null, dx: 0};
+});
+$('otBody').addEventListener('pointermove', e => {
+  if (!swipe || e.pointerId !== swipe.id) return;
+  const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
+  if (!swipe.dir) { if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.2) { swipe.dir = 'x'; try { swipe.card.setPointerCapture(e.pointerId); } catch {} swipe.card.classList.add('dragging'); swipe.card.parentElement.classList.add('reveal'); } else if (Math.abs(dy) > 8) { swipe = null; return; } else return; }
+  swipe.dx = Math.max(SW_OPEN - 24, Math.min(0, swipe.base + dx));
+  swipe.card.style.transform = `translateX(${swipe.dx}px)`;
+});
+const endSwipe = e => {
+  if (!swipe || e.pointerId !== swipe.id) return;
+  const {card, dir, dx} = swipe; swipe = null;
+  if (dir !== 'x') return;
+  card.classList.remove('dragging'); swipedAt = Date.now();
+  const open = dx < SW_OPEN / 2;
+  card.classList.toggle('open', open); card.style.transform = open ? `translateX(${SW_OPEN}px)` : '';
+  if (!open) setTimeout(() => { if (!card.classList.contains('open')) card.parentElement.classList.remove('reveal'); }, 250);
+};
+$('otBody').addEventListener('pointerup', endSwipe);
+$('otBody').addEventListener('pointercancel', endSwipe);
 // ---- 手機：點一列打開寬敞的編輯面板 ----
 function mobUI(){ return matchMedia('(max-width:760px)').matches; }
 matchMedia('(max-width:760px)').addEventListener('change', () => { if (!$('viewOT').hidden) renderOT(); });
 $('otBody').addEventListener('click', e => {
-  if (!mobUI() || e.target.closest('[data-pick]') || Date.now() - pickEndedAt < 500) return;   // 點圓鈕只做選取，不開編輯
+  if (!mobUI() || e.target.closest('[data-pick]') || e.target.closest('.swdel') || Date.now() - pickEndedAt < 500 || Date.now() - swipedAt < 400) return;   // 點圓鈕只做選取；滑動後不開編輯
+  if (e.target.closest('.card.open')) { closeSwipes(); return; }   // 已滑開的卡片，點一下先收回
   const tr = e.target.closest('tr[data-i]'); if (tr) openRowEditor(+tr.dataset.i);
 });
 function openRowEditor(i){
