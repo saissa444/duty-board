@@ -434,7 +434,7 @@ table.ot tr td{transition:background-color .2s var(--ease)}
   <button class="fab" id="otAddFab" type="button" aria-label="複製目前點選的那一列，新增一筆">＋ 增加</button>
 </div>
 <script>
-const APP_VERSION = 'v37';   // 每次更新要和 sw.js 的 CACHE 版本號一起改
+const APP_VERSION = 'v38';   // 每次更新要和 sw.js 的 CACHE 版本號一起改
 // Parses a 勤務分配表 PDF (as text items) into shifts. Pure function, no DOM.
 // 欄位位置依每頁表頭（值星、帶勤、業務整理…）來找，不受紙張大小（A4、B4…）影響。
 function parseDutyPages(pages) {
@@ -473,8 +473,8 @@ function parseDutyPages(pages) {
     for (const c of its) {
       if (c.yc >= codeHead.yc || c.x < codeL || c.x > codeR || !/^[A-Z0-9]$/.test(c.s)) continue;
       const near = its.filter(v => Math.abs(v.yc - c.yc) < c.h * 0.4 && v.x > c.x + c.w).sort((a,b)=>a.x-b.x);
-      const nm = near.filter(v => v.x >= nameX).map(v=>v.s).join('');
-      const role = near.filter(v => v.x < nameX).map(v=>v.s).join('');
+      const nm = near.filter(v => v.x >= nameX).map(v=>v.s).join('').replace(/\s+/g, '');
+      const role = near.filter(v => v.x < nameX).map(v=>v.s).join('').replace(/\s+/g, '');
       if (nm && !/差假|輪休|補休|休假|公假|合計/.test(nm + role)) names[c.s] = {name:nm, role};
     }
     void roleHead;
@@ -761,7 +761,8 @@ $('pdfInput').onchange = async e => {
     const lib = await pdfLib();
     for (const f of files) {
       try {
-        const doc = await lib.getDocument({data: new Uint8Array(await f.arrayBuffer()), isEvalSupported:false}).promise;
+        // cMapUrl：讀取用標楷體等中文字型（UniCNS 編碼）產生的 PDF 時需要，否則只讀得到數字
+        const doc = await lib.getDocument({data: new Uint8Array(await f.arrayBuffer()), isEvalSupported:false, cMapUrl: new URL('./pdfjs/cmaps/', location.href).href, cMapPacked: true}).promise;
         const pages = [];
         for (let i=1;i<=doc.numPages;i++){ const p = await doc.getPage(i); const tc = await p.getTextContent();
           pages.push(tc.items.map(it => ({str:it.str, x:it.transform[4], y:it.transform[5], w:it.width, h:it.height}))); }
