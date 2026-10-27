@@ -1,5 +1,5 @@
 // 離線快取：第一次開啟時把整個 App 存到裝置裡，之後沒網路也能用
-const CACHE = 'duty-board-v36';   // 每次更新 App 都要改這個版本號（index.html 的 APP_VERSION 也要一起改）
+const CACHE = 'duty-board-v37';   // 每次更新 App 都要改這個版本號（index.html 的 APP_VERSION 也要一起改）
 const FILES = ['./', './index.html', './manifest.webmanifest', './pdfjs/pdf.min.mjs', './pdfjs/pdf.worker.min.mjs',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'];
 // 安裝時一律從網路抓最新檔案（不用瀏覽器快取），避免存到舊版

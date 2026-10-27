@@ -434,7 +434,7 @@ table.ot tr td{transition:background-color .2s var(--ease)}
   <button class="fab" id="otAddFab" type="button" aria-label="複製目前點選的那一列，新增一筆">＋ 增加</button>
 </div>
 <script>
-const APP_VERSION = 'v36';   // 每次更新要和 sw.js 的 CACHE 版本號一起改
+const APP_VERSION = 'v37';   // 每次更新要和 sw.js 的 CACHE 版本號一起改
 // Parses a 勤務分配表 PDF (as text items) into shifts. Pure function, no DOM.
 // 欄位位置依每頁表頭（值星、帶勤、業務整理…）來找，不受紙張大小（A4、B4…）影響。
 function parseDutyPages(pages) {
@@ -736,7 +736,7 @@ function render(){
 let toastT; function toast(msg, action){
   const t=$('toast'); t.textContent=msg;
   if (action) { const b = document.createElement('button'); b.type='button'; b.className='toastact'; b.textContent=action.label; b.onclick = () => { t.hidden = true; action.run(); }; t.append(b); }
-  t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true, action ? 7000 : 3500);
+  t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true, action ? 7000 : Math.max(3500, String(msg).length * 110));   // 長訊息停久一點
 }
 
 $('prevWk').onclick = () => { const ids=weekIds(); viewWeek = ids[Math.max(0, ids.indexOf(viewWeek)-1)]; render(); };
@@ -765,6 +765,8 @@ $('pdfInput').onchange = async e => {
         const pages = [];
         for (let i=1;i<=doc.numPages;i++){ const p = await doc.getPage(i); const tc = await p.getTextContent();
           pages.push(tc.items.map(it => ({str:it.str, x:it.transform[4], y:it.transform[5], w:it.width, h:it.height}))); }
+        const textLen = pages.reduce((n, pg) => n + pg.reduce((m, it) => m + (it.str || '').trim().length, 0), 0);
+        if (textLen < 20) throw new Error('這份 PDF 是圖片（例如掃描或拍照轉成的 PDF），裡面沒有文字可以讀取。請改用從 Excel 直接「另存成 PDF」的檔案。');
         const r = parseDutyPages(pages);
         if (!r.firstDay) throw new Error('找不到勤務分配表的日期，請確認是同一種格式的 PDF');
         const week = {...r, source: f.name, uploadedAt: new Date().toISOString()};
